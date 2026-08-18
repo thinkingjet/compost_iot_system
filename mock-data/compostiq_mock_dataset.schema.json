@@ -1,0 +1,320 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://compostiq.local/schemas/compostiq_mock_dataset.schema.json",
+  "title": "CompostIQ Mock Dataset",
+  "description": "Schema for the generated CompostIQ mock simulator dataset used by the mock research API.",
+  "type": "object",
+  "required": [
+    "metadata",
+    "sites",
+    "bins",
+    "stage_definitions",
+    "fault_definitions",
+    "summary",
+    "readings"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "required": ["project", "description", "generated_at", "schema_version", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "project": { "type": "string" },
+        "description": { "type": "string" },
+        "generated_at": { "type": "string", "format": "date-time" },
+        "schema_version": { "type": "string" },
+        "source": { "type": "string" }
+      }
+    },
+    "sites": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/site" }
+    },
+    "bins": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/bin" }
+    },
+    "stage_definitions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/stage_definition" }
+    },
+    "fault_definitions": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "summary": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/bin_summary" }
+    },
+    "readings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/reading" }
+    }
+  },
+  "$defs": {
+    "site": {
+      "type": "object",
+      "required": ["site_id", "name", "location"],
+      "additionalProperties": false,
+      "properties": {
+        "site_id": { "type": "string" },
+        "name": { "type": "string" },
+        "location": {
+          "type": "object",
+          "required": ["city", "province", "country"],
+          "additionalProperties": false,
+          "properties": {
+            "city": { "type": "string" },
+            "province": { "type": "string" },
+            "country": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 2
+            }
+          }
+        }
+      }
+    },
+    "bin": {
+      "type": "object",
+      "required": [
+        "bin_id",
+        "site_id",
+        "device_id",
+        "batch_id",
+        "method",
+        "bacterial_context",
+        "feedstock"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "bin_id": { "type": "string" },
+        "site_id": { "type": "string" },
+        "device_id": { "type": "string" },
+        "batch_id": { "type": "string" },
+        "method": { "$ref": "#/$defs/compost_method" },
+        "bacterial_context": { "type": "string" },
+        "feedstock": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "stage_definition": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "duration_days",
+        "temp_range",
+        "moisture_range",
+        "o2_range",
+        "co2_range",
+        "nh3_relative"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "name": { "type": "string" },
+        "duration_days": { "$ref": "#/$defs/number_triplet" },
+        "temp_range": { "$ref": "#/$defs/number_pair" },
+        "moisture_range": { "$ref": "#/$defs/number_pair" },
+        "o2_range": { "$ref": "#/$defs/number_pair" },
+        "co2_range": { "$ref": "#/$defs/number_pair" },
+        "nh3_relative": { "$ref": "#/$defs/number_pair" }
+      }
+    },
+    "bin_summary": {
+      "type": "object",
+      "required": [
+        "bin_id",
+        "device_id",
+        "batch_id",
+        "method",
+        "sample_count",
+        "simulated_duration_days",
+        "fault_profile",
+        "fault_counts"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "bin_id": { "type": "string" },
+        "device_id": { "type": "string" },
+        "batch_id": { "type": "string" },
+        "method": { "$ref": "#/$defs/compost_method" },
+        "sample_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "simulated_duration_days": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fault_profile": { "type": "string" },
+        "fault_counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "reading": {
+      "type": "object",
+      "required": [
+        "reading_id",
+        "site_id",
+        "bin_id",
+        "device_id",
+        "batch_id",
+        "recorded_at",
+        "sequence",
+        "compost_context",
+        "telemetry",
+        "label",
+        "faults",
+        "quality"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "reading_id": { "type": "string" },
+        "site_id": { "type": "string" },
+        "bin_id": { "type": "string" },
+        "device_id": { "type": "string" },
+        "batch_id": { "type": "string" },
+        "recorded_at": { "type": "string", "format": "date-time" },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "compost_context": { "$ref": "#/$defs/compost_context" },
+        "telemetry": { "$ref": "#/$defs/telemetry" },
+        "label": { "$ref": "#/$defs/label" },
+        "faults": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/fault" }
+        },
+        "quality": { "$ref": "#/$defs/quality" }
+      }
+    },
+    "compost_context": {
+      "type": "object",
+      "required": ["method", "bacterial_context", "feedstock"],
+      "additionalProperties": false,
+      "properties": {
+        "method": { "$ref": "#/$defs/compost_method" },
+        "bacterial_context": { "type": "string" },
+        "feedstock": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "required": [
+        "temperature_c",
+        "moisture_pct",
+        "oxygen_pct",
+        "co2_pct",
+        "nh3_relative",
+        "mq135_composite_ppm"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "temperature_c": {
+          "type": "number",
+          "minimum": -10,
+          "maximum": 100
+        },
+        "moisture_pct": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "oxygen_pct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 21
+        },
+        "co2_pct": {
+          "type": "number",
+          "minimum": 0
+        },
+        "nh3_relative": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "mq135_composite_ppm": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Composite MQ-135 response. This is not a clean CO2 measurement."
+        }
+      }
+    },
+    "label": {
+      "type": "object",
+      "required": ["stage_id", "stage_name", "stage_day", "days_until_ready"],
+      "additionalProperties": false,
+      "properties": {
+        "stage_id": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stage_name": { "type": "string" },
+        "stage_day": {
+          "type": "number",
+          "minimum": 0
+        },
+        "days_until_ready": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "fault": {
+      "type": "object",
+      "required": ["code", "severity"],
+      "additionalProperties": false,
+      "properties": {
+        "code": { "type": "string" },
+        "severity": {
+          "type": "string",
+          "enum": ["info", "warning", "critical"]
+        }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "required": ["simulated", "schema_version", "generator_seed"],
+      "additionalProperties": false,
+      "properties": {
+        "simulated": { "type": "boolean" },
+        "schema_version": { "type": "string" },
+        "generator_seed": { "type": "integer" }
+      }
+    },
+    "compost_method": {
+      "type": "string",
+      "enum": ["takakura", "bokashi", "aerated_static_pile"]
+    },
+    "number_pair": {
+      "type": "array",
+      "prefixItems": [{ "type": "number" }, { "type": "number" }],
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "number_triplet": {
+      "type": "array",
+      "prefixItems": [{ "type": "number" }, { "type": "number" }, { "type": "number" }],
+      "minItems": 3,
+      "maxItems": 3
+    }
+  }
+}
