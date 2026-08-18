@@ -25,7 +25,7 @@ from dash import ALL, Dash, Input, Output, State, callback, ctx, dcc, html, no_u
 import generator
 import run_store
 from ui import charts, layout
-from ui.theme import THEME, figure_template, register_figure_templates
+from ui.theme import THEME, figure_template, icon, register_figure_templates
 
 # apply the stored light/dark choice before the first paint, so there is no
 # flash of the wrong theme on reload
@@ -244,28 +244,29 @@ def generate_run(runs, start_stage, start_date, duration, seed, interval, noise_
     Output("temp-graph", "figure"),
     Output("timeline-graph", "figure"),
     Output("param-graph", "figure"),
+    Output("run-action-status", "children"),
     Input("run-tabs", "value"),
     Input("param-selector", "value"),
     Input("color-scheme-toggle", "computedColorScheme"),
     Input("run-index", "data"),
 )
 def render_panel(run_id, param_key, color_scheme, runs):
+    hidden = ({"display": "none"}, {"display": "block"},
+              no_update, no_update, no_update, no_update, no_update, None)
+
     if not run_id or not runs:
-        return ({"display": "none"}, {"display": "block"},
-                no_update, no_update, no_update, no_update, no_update)
+        return hidden
 
     meta = next((m for m in runs if m["run_id"] == run_id), None)
     if meta is None:
-        return ({"display": "none"}, {"display": "block"},
-                no_update, no_update, no_update, no_update, no_update)
+        return hidden
 
     template = figure_template(color_scheme)
     df = run_store.load_dataframe(run_id)
     if df.empty:
         # the meta sidecar is there but the readings are not - fall back to the
         # empty state rather than dividing by a cycle that has no rows
-        return ({"display": "none"}, {"display": "block"},
-                no_update, no_update, no_update, no_update, no_update)
+        return hidden
 
     if param_key == "all":
         detail = charts.all_parameters_figure(df, layout.SECONDARY_PARAMS, template)
@@ -280,6 +281,60 @@ def render_panel(run_id, param_key, color_scheme, runs):
         charts.temperature_bar_figure(df, template),
         charts.stage_timeline_figure(df, template),
         detail,
+        None,
+    )
+
+
+@callback(
+    Output("download-run-file", "data"),
+    Input({"type": "download-run", "index": ALL}, "n_clicks"),
+    State("run-index", "data"),
+    prevent_initial_call=True,
+)
+def download_run(_clicks, runs):
+    """Send the selected cycle's readings to the browser as a .json file."""
+    trigger = ctx.triggered_id
+    if not isinstance(trigger, dict) or not (ctx.triggered and ctx.triggered[0]["value"]):
+        return no_update
+
+    run_id = trigger["index"]
+    path = run_store.data_path(run_id)
+    if not os.path.exists(path):
+        return no_update
+
+    meta = next((m for m in (runs or []) if m["run_id"] == run_id), None)
+    label = (meta or {}).get("label", run_id).lower().replace(" ", "-")
+    return dcc.send_file(path, filename="compostiq-%s-%s.json" % (label, run_id))
+
+
+@callback(
+    Output("run-action-status", "children", allow_duplicate=True),
+    Input({"type": "upload-run", "index": ALL}, "n_clicks"),
+    State("run-index", "data"),
+    prevent_initial_call=True,
+)
+def mock_cloud_upload(_clicks, runs):
+    """Stand-in for pushing a cycle to the backend API.
+
+    Deliberately does nothing but say so - there is no endpoint yet, and a
+    button that silently pretended to succeed would be worse than none.
+    """
+    trigger = ctx.triggered_id
+    if not isinstance(trigger, dict) or not (ctx.triggered and ctx.triggered[0]["value"]):
+        return no_update
+
+    meta = next((m for m in (runs or []) if m["run_id"] == trigger["index"]), None)
+    rows = (meta or {}).get("summary", {}).get("rows", 0)
+
+    return dmc.Alert(
+        "Would have sent {:,} readings to the CompostIQ ingest endpoint. "
+        "Nothing left this machine — this button is a mock until the backend "
+        "API is built.".format(rows),
+        title="Cloud upload (mock)",
+        color="blue",
+        variant="light",
+        withCloseButton=True,
+        icon=icon("cloud-upload", 18),
     )
 
 

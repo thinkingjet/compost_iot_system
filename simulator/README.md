@@ -45,9 +45,12 @@ Dependencies are in `requirements.txt` (`dash`, `dash-mantine-components`,
 - A tab bar across the top, one tab per generated cycle. Each tab shows its duration, reading
   count, and a colour strip for the stages it covers. Tabs are rebuilt from `Data/` on startup,
   so they survive a restart.
-- A cycle summary strip: date range, seed, reading count, interval, peak temperature, the file
-  the readings were written to, and a ring showing the longest unbroken stretch at or above
-  55 °C against the 3-day EPA Class A target.
+- A cycle summary strip: date range, seed, reading count, interval, peak temperature, and a
+  ring showing the longest unbroken stretch at or above 55 °C against the 3-day EPA Class A
+  target. Two actions sit alongside it:
+  - **Download JSON** — sends that cycle's readings to the browser as a file.
+  - **Upload to cloud** — labelled *mock*. It reports what it *would* have sent and does not
+    contact anything; it is a placeholder until the backend API exists.
 - **Temperature over time** as the hero chart — every reading drawn as a bar coloured by the
   stage it belongs to, with the 55 °C target marked.
 - A stage timeline showing how long the pile spent in each stage.

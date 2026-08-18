@@ -555,10 +555,37 @@ def cycle_summary(meta, df):
                         ),
                         dmc.Group(
                             [
-                                dmc.Code("simulator/Data/%s.json" % meta["run_id"], style={"fontSize": 11}),
-                                dmc.CopyButton(value="simulator/Data/%s.json" % meta["run_id"]),
+                                dmc.Button(
+                                    "Download JSON",
+                                    # pattern-matching ids: these only exist once
+                                    # a cycle is selected, so a plain string id
+                                    # would make Dash complain on first load
+                                    id={"type": "download-run", "index": meta["run_id"]},
+                                    leftSection=icon("download", 16),
+                                    variant="light",
+                                    size="xs",
+                                    n_clicks=0,
+                                ),
+                                dmc.Tooltip(
+                                    dmc.Button(
+                                        "Upload to cloud",
+                                        id={"type": "upload-run", "index": meta["run_id"]},
+                                        leftSection=icon("cloud-upload", 16),
+                                        rightSection=dmc.Badge(
+                                            "mock", size="xs", variant="filled", color="gray"
+                                        ),
+                                        variant="default",
+                                        size="xs",
+                                        n_clicks=0,
+                                    ),
+                                    label="Mocked — nothing is sent anywhere. "
+                                          "Here for the demo until the backend API exists.",
+                                    withArrow=True,
+                                    multiline=True,
+                                    w=260,
+                                ),
                             ],
-                            gap=6,
+                            gap="xs",
                         ),
                     ],
                     gap=6,
@@ -675,6 +702,8 @@ def main_panel():
                     children=dmc.Stack(
                         [
                             html.Div(id="cycle-summary"),
+                            html.Div(id="run-action-status"),
+                            dcc.Download(id="download-run-file"),
                             chart_card(
                                 "Temperature over time",
                                 "Every reading, coloured by the composting stage it falls in",
