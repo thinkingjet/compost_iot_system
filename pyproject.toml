@@ -1,0 +1,11 @@
+[project]
+name = "compost-iot-system"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "dash>=4.4.1",
+    "dash-mantine-components>=2.8.0",
+    "pandas>=3.0.5",
+    "plotly>=6.9.0",
+]
