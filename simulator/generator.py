@@ -19,7 +19,9 @@ from composting_stages import STAGES
 # paths built off this script's own location, not wherever it's run from
 THIS_FOLDER = os.path.dirname(os.path.abspath(__file__))
 SCHEMA_PATH = os.path.join(THIS_FOLDER, "..", "mock-data", "compostiq_mock_dataset.schema.json")
-DATA_PATH = os.path.join(THIS_FOLDER, "..", "mock-data", "compostiq_mock_dataset.json")
+# generated datasets live next to the simulator now, not in ../mock-data
+DATA_DIR = os.path.join(THIS_FOLDER, "Data")
+DATA_PATH = os.path.join(DATA_DIR, "compostiq_mock_dataset.json")
 
 # the schema is our blueprint: it says what fields exist and what range each
 # one is allowed to be in, so we read it once and use it to clamp readings
@@ -37,6 +39,27 @@ MOISTURE_NOISE_STD = 1.0
 O2_NOISE_STD = 0.3
 CO2_NOISE_STD = 0.2
 NH3_NOISE_STD = 0.03
+
+# same numbers again, keyed by column name, so a caller (e.g. the simulator UI)
+# can hand us a partial override without knowing our constant names
+NOISE_DEFAULTS = {
+    "temperature_c": TEMP_NOISE_STD,
+    "moisture_pct": MOISTURE_NOISE_STD,
+    "o2_pct": O2_NOISE_STD,
+    "co2_pct": CO2_NOISE_STD,
+    "nh3_relative": NH3_NOISE_STD,
+}
+
+
+def resolve_noise(noise):
+    # fill any missing sensor in the override with its default
+    if not noise:
+        return dict(NOISE_DEFAULTS)
+    resolved = dict(NOISE_DEFAULTS)
+    for field in NOISE_DEFAULTS:
+        if noise.get(field) is not None:
+            resolved[field] = float(noise[field])
+    return resolved
 
 # highest temperature any stage reaches, used to work out how "active" the
 # pile is at a given moment (find it once instead of looping every step)
@@ -127,7 +150,12 @@ def clamp_to_schema(value, field_name):
     return value
 
 
-def generate_stage_data(stage, start_time, start_temp, start_moisture, days_left=None):
+def generate_stage_data(stage, start_time, start_temp, start_moisture, days_left=None,
+                        sample_interval_minutes=None, noise=None):
+    if sample_interval_minutes is None:
+        sample_interval_minutes = SAMPLE_INTERVAL_MINUTES
+    noise = resolve_noise(noise)
+
     # how long this stage would naturally run for
     full_duration_days = get_stage_duration(stage)
 
@@ -136,7 +164,7 @@ def generate_stage_data(stage, start_time, start_temp, start_moisture, days_left
     if days_left is not None and duration_days > days_left:
         duration_days = days_left
 
-    step_days = SAMPLE_INTERVAL_MINUTES / (24 * 60)
+    step_days = sample_interval_minutes / (24 * 60)
 
     num_steps = round(duration_days / step_days)
     if num_steps < 1:
@@ -166,11 +194,11 @@ def generate_stage_data(stage, start_time, start_temp, start_moisture, days_left
         if random.random() < MISSED_READING_CHANCE:
             continue
 
-        temperature_reading = clamp_to_schema(round(add_noise(temp, TEMP_NOISE_STD), 2), "temperature_c")
-        moisture_reading = clamp_to_schema(round(add_noise(moisture, MOISTURE_NOISE_STD), 2), "moisture_pct")
-        o2_reading = clamp_to_schema(round(add_noise(o2, O2_NOISE_STD), 2), "o2_pct")
-        co2_reading = clamp_to_schema(round(add_noise(co2, CO2_NOISE_STD), 2), "co2_pct")
-        nh3_reading = clamp_to_schema(round(add_noise(nh3, NH3_NOISE_STD), 3), "nh3_relative")
+        temperature_reading = clamp_to_schema(round(add_noise(temp, noise["temperature_c"]), 2), "temperature_c")
+        moisture_reading = clamp_to_schema(round(add_noise(moisture, noise["moisture_pct"]), 2), "moisture_pct")
+        o2_reading = clamp_to_schema(round(add_noise(o2, noise["o2_pct"]), 2), "o2_pct")
+        co2_reading = clamp_to_schema(round(add_noise(co2, noise["co2_pct"]), 2), "co2_pct")
+        nh3_reading = clamp_to_schema(round(add_noise(nh3, noise["nh3_relative"]), 3), "nh3_relative")
 
         rows.append({
             "timestamp": timestamp,
@@ -187,13 +215,17 @@ def generate_stage_data(stage, start_time, start_temp, start_moisture, days_left
     return rows, temp, moisture, end_time, duration_days
 
 
-def generate_bin_data(start_time=None, seed=None, start_stage_id=0, max_days=None):
+def generate_bin_data(start_time=None, seed=None, start_stage_id=0, max_days=None,
+                      sample_interval_minutes=None, noise=None):
     """
     start_time    - when the simulated timeline begins (defaults to now)
     seed          - set this to get the exact same "random" data every run
     start_stage_id - which stage to start at (0 = Early Mesophilic, ... 4 = Maturation)
     max_days      - stop once this many days of data have been generated
                      (None = run all the way through to the end of Maturation)
+    sample_interval_minutes - gap between readings (None = SAMPLE_INTERVAL_MINUTES)
+    noise         - per-sensor standard deviations, e.g. {"temperature_c": 0.5}.
+                     Anything left out falls back to NOISE_DEFAULTS.
     """
     if seed is not None:
         random.seed(seed)
@@ -224,7 +256,9 @@ def generate_bin_data(start_time=None, seed=None, start_stage_id=0, max_days=Non
                 break
 
         rows, temp, moisture, current_time, days_added = generate_stage_data(
-            stage, current_time, temp, moisture, days_left
+            stage, current_time, temp, moisture, days_left,
+            sample_interval_minutes=sample_interval_minutes,
+            noise=noise,
         )
         all_rows = all_rows + rows
         days_used = days_used + days_added
