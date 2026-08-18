@@ -6,13 +6,26 @@ out with occasional "turning" bumps, and the gas readings are based on
 how active the pile is (linked to temperature) instead of being random
 too. At the end we add some noise to make it look like real sensor data.
 """
+import json
 import math
+import os
 import random
 from datetime import datetime, timedelta
 
 import pandas as pd
 
 from composting_stages import STAGES
+
+# paths built off this script's own location, not wherever it's run from
+THIS_FOLDER = os.path.dirname(os.path.abspath(__file__))
+SCHEMA_PATH = os.path.join(THIS_FOLDER, "..", "mock-data", "compostiq_mock_dataset.schema.json")
+DATA_PATH = os.path.join(THIS_FOLDER, "..", "mock-data", "compostiq_mock_dataset.json")
+
+# the schema is our blueprint: it says what fields exist and what range each
+# one is allowed to be in, so we read it once and use it to clamp readings
+with open(SCHEMA_PATH) as f:
+    SCHEMA = json.load(f)
+FIELD_RULES = SCHEMA["items"]["properties"]
 
 AMBIENT_TEMP = 28.0
 SAMPLE_INTERVAL_MINUTES = 30
@@ -103,6 +116,17 @@ def add_noise(value, std):
     return value + random.gauss(0, std)
 
 
+def clamp_to_schema(value, field_name):
+    # look up the allowed range for this field straight from the schema
+    # file, instead of hardcoding "if x < 0: x = 0" per field
+    rules = FIELD_RULES[field_name]
+    if "minimum" in rules and value < rules["minimum"]:
+        value = rules["minimum"]
+    if "maximum" in rules and value > rules["maximum"]:
+        value = rules["maximum"]
+    return value
+
+
 def generate_stage_data(stage, start_time, start_temp, start_moisture):
     duration_days = get_stage_duration(stage)
     step_days = SAMPLE_INTERVAL_MINUTES / (24 * 60)
@@ -133,20 +157,20 @@ def generate_stage_data(stage, start_time, start_temp, start_moisture):
         if random.random() < MISSED_READING_CHANCE:
             continue
 
-        nh3_reading = round(add_noise(nh3, NH3_NOISE_STD), 3)
-        if nh3_reading < 0:
-            nh3_reading = 0.0
-        if nh3_reading > 1:
-            nh3_reading = 1.0
+        temperature_reading = clamp_to_schema(round(add_noise(temp, TEMP_NOISE_STD), 2), "temperature_c")
+        moisture_reading = clamp_to_schema(round(add_noise(moisture, MOISTURE_NOISE_STD), 2), "moisture_pct")
+        o2_reading = clamp_to_schema(round(add_noise(o2, O2_NOISE_STD), 2), "o2_pct")
+        co2_reading = clamp_to_schema(round(add_noise(co2, CO2_NOISE_STD), 2), "co2_pct")
+        nh3_reading = clamp_to_schema(round(add_noise(nh3, NH3_NOISE_STD), 3), "nh3_relative")
 
         rows.append({
             "timestamp": timestamp,
             "stage_id": stage["id"],
             "stage_name": stage["name"],
-            "temperature_c": round(add_noise(temp, TEMP_NOISE_STD), 2),
-            "moisture_pct": round(add_noise(moisture, MOISTURE_NOISE_STD), 2),
-            "o2_pct": round(add_noise(o2, O2_NOISE_STD), 2),
-            "co2_pct": round(add_noise(co2, CO2_NOISE_STD), 2),
+            "temperature_c": temperature_reading,
+            "moisture_pct": moisture_reading,
+            "o2_pct": o2_reading,
+            "co2_pct": co2_reading,
             "nh3_relative": nh3_reading,
         })
 
@@ -174,6 +198,23 @@ def generate_bin_data(start_time=None, seed=None):
     return pd.DataFrame(all_rows)
 
 
+def dataframe_to_records(df):
+    # turn the dataframe into a plain list of dicts so it reads like a normal JSON array
+    records = df.to_dict(orient="records")
+    for row in records:
+        row["timestamp"] = row["timestamp"].isoformat()
+    return records
+
+
+def save_json_file(records, filepath):
+    folder = os.path.dirname(filepath)
+    if folder and not os.path.exists(folder):
+        os.makedirs(folder)
+
+    with open(filepath, "w") as f:
+        json.dump(records, f, indent=2)
+
+
 if __name__ == "__main__":
     df = generate_bin_data(seed=42)
     print(df.head(10))
@@ -184,3 +225,7 @@ if __name__ == "__main__":
         stage_rows = df[df["stage_id"] == stage["id"]]
         avg_temp = stage_rows["temperature_c"].mean()
         print(stage["name"], "- average temperature:", round(avg_temp, 2))
+
+    records = dataframe_to_records(df)
+    save_json_file(records, DATA_PATH)
+    print("Saved data to", DATA_PATH)
