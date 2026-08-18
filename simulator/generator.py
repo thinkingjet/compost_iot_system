@@ -127,8 +127,15 @@ def clamp_to_schema(value, field_name):
     return value
 
 
-def generate_stage_data(stage, start_time, start_temp, start_moisture):
-    duration_days = get_stage_duration(stage)
+def generate_stage_data(stage, start_time, start_temp, start_moisture, days_left=None):
+    # how long this stage would naturally run for
+    full_duration_days = get_stage_duration(stage)
+
+    # how long we're actually allowed to run it for, if a day limit was set
+    duration_days = full_duration_days
+    if days_left is not None and duration_days > days_left:
+        duration_days = days_left
+
     step_days = SAMPLE_INTERVAL_MINUTES / (24 * 60)
 
     num_steps = round(duration_days / step_days)
@@ -136,7 +143,9 @@ def generate_stage_data(stage, start_time, start_temp, start_moisture):
         num_steps = 1
 
     target_temp = get_temp_target(start_temp, stage["temp_range"])
-    tau_days = duration_days * 0.3
+    # tau is based on the stage's natural (untruncated) duration, so cutting
+    # the output short doesn't change how fast the stage actually behaves
+    tau_days = full_duration_days * 0.3
     if tau_days < 0.25:
         tau_days = 0.25
 
@@ -175,10 +184,17 @@ def generate_stage_data(stage, start_time, start_temp, start_moisture):
         })
 
     end_time = start_time + timedelta(days=duration_days)
-    return rows, temp, moisture, end_time
+    return rows, temp, moisture, end_time, duration_days
 
 
-def generate_bin_data(start_time=None, seed=None):
+def generate_bin_data(start_time=None, seed=None, start_stage_id=0, max_days=None):
+    """
+    start_time    - when the simulated timeline begins (defaults to now)
+    seed          - set this to get the exact same "random" data every run
+    start_stage_id - which stage to start at (0 = Early Mesophilic, ... 4 = Maturation)
+    max_days      - stop once this many days of data have been generated
+                     (None = run all the way through to the end of Maturation)
+    """
     if seed is not None:
         random.seed(seed)
 
@@ -187,13 +203,31 @@ def generate_bin_data(start_time=None, seed=None):
     else:
         current_time = start_time
 
-    temp = AMBIENT_TEMP
-    moisture = (STAGES[0]["moisture_range"][0] + STAGES[0]["moisture_range"][1]) / 2
+    stages_to_run = [stage for stage in STAGES if stage["id"] >= start_stage_id]
+
+    first_stage = stages_to_run[0]
+    if first_stage["id"] == 0:
+        # Stage 0 specifically can't start below ambient (see composting_stages.py)
+        temp = AMBIENT_TEMP
+    else:
+        temp = (first_stage["temp_range"][0] + first_stage["temp_range"][1]) / 2
+    moisture = (first_stage["moisture_range"][0] + first_stage["moisture_range"][1]) / 2
 
     all_rows = []
-    for stage in STAGES:
-        rows, temp, moisture, current_time = generate_stage_data(stage, current_time, temp, moisture)
+    days_used = 0.0
+
+    for stage in stages_to_run:
+        days_left = None
+        if max_days is not None:
+            days_left = max_days - days_used
+            if days_left <= 0:
+                break
+
+        rows, temp, moisture, current_time, days_added = generate_stage_data(
+            stage, current_time, temp, moisture, days_left
+        )
         all_rows = all_rows + rows
+        days_used = days_used + days_added
 
     return pd.DataFrame(all_rows)
 
@@ -215,17 +249,49 @@ def save_json_file(records, filepath):
         json.dump(records, f, indent=2)
 
 
+def ask_for_settings():
+    print("Stages available:")
+    for stage in STAGES:
+        print(" ", stage["id"], "-", stage["name"])
+
+    start_stage_input = input("Start stage id [0]: ").strip()
+    if start_stage_input == "":
+        start_stage_id = 0
+    else:
+        start_stage_id = int(start_stage_input)
+
+    start_date_input = input("Start date, YYYY-MM-DD [today]: ").strip()
+    if start_date_input == "":
+        start_time = datetime.now()
+    else:
+        start_time = datetime.strptime(start_date_input, "%Y-%m-%d")
+
+    max_days_input = input("Duration in days [no limit, full cycle]: ").strip()
+    if max_days_input == "":
+        max_days = None
+    else:
+        max_days = float(max_days_input)
+
+    return start_stage_id, start_time, max_days
+
+
 if __name__ == "__main__":
-    df = generate_bin_data(seed=42)
+    start_stage_id, start_time, max_days = ask_for_settings()
+
+    df = generate_bin_data(seed=42, start_stage_id=start_stage_id, start_time=start_time, max_days=max_days)
+    print()
     print(df.head(10))
     print("Total rows:", len(df))
 
     print()
     for stage in STAGES:
         stage_rows = df[df["stage_id"] == stage["id"]]
+        if len(stage_rows) == 0:
+            continue
         avg_temp = stage_rows["temperature_c"].mean()
         print(stage["name"], "- average temperature:", round(avg_temp, 2))
 
     records = dataframe_to_records(df)
     save_json_file(records, DATA_PATH)
+    print()
     print("Saved data to", DATA_PATH)
