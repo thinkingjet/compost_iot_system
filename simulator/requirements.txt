@@ -1,3 +1,4 @@
 plotly
 dash
+pandas
 dash-mantine-components
