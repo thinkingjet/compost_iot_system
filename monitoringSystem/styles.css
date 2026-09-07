@@ -89,6 +89,7 @@ h3 { font: 700 14px/1.35 "Manrope"; }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 13px; }
 .section-head h2 { margin: 0; }
 .section-head a { color: var(--green); font-size: 13px; font-weight: 700; cursor: pointer; }
+.text-action { border: 0; padding: 4px 0; color: var(--green); background: transparent; font-size: 13px; font-weight: 700; cursor: pointer; }
 
 .metric { position: relative; overflow: hidden; min-height: 132px; }
 .metric-top { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; font-weight: 600; }
@@ -98,7 +99,7 @@ h3 { font: 700 14px/1.35 "Manrope"; }
 .metric-value small { color: var(--subtle); font-size: 13px; font-weight: 600; }
 .metric-delta { margin-top: 8px; color: var(--muted); font-size: 11px; }
 .metric-delta b { color: var(--green); }
-.metric-spark { position: absolute; right: -3px; bottom: -5px; width: 94px; height: 50px; opacity: .68; }
+.metric-spark { position: absolute; right: -3px; bottom: -5px; width: 94px; height: 50px; opacity: .68; pointer-events: none; }
 
 .alert-card { padding: 16px; display: flex; gap: 13px; align-items: flex-start; box-shadow: none; }
 .alert-icon { width: 36px; height: 36px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 10px; }
@@ -119,7 +120,7 @@ h3 { font: 700 14px/1.35 "Manrope"; }
 .unit-location { margin-top: 5px; color: var(--muted); font-size: 11px; }
 .phase-orb { width: 55px; height: 55px; border: 1px solid rgba(29,123,80,.18); border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,.68); color: var(--green); }
 .phase-orb svg { width: 27px; }
-.mini-chart { position: absolute; left: 15px; right: 15px; bottom: 8px; height: 48px; }
+.mini-chart { position: absolute; left: 15px; right: 15px; bottom: 8px; height: 48px; pointer-events: none; }
 .unit-body { padding: 15px 18px 18px; }
 .unit-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .unit-row + .unit-row { margin-top: 13px; }
@@ -128,11 +129,11 @@ h3 { font: 700 14px/1.35 "Manrope"; }
 .health-bar { width: 58px; height: 5px; border-radius: 99px; overflow: hidden; background: #e8ece7; }
 .health-bar i { display: block; height: 100%; border-radius: inherit; background: var(--green); }
 
-.workspace { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 18px; }
-.subnav { height: fit-content; padding: 8px; }
-.subnav button { border: 0; width: 100%; padding: 11px 12px; border-radius: 9px; background: transparent; text-align: left; color: var(--muted); cursor: pointer; font-size: 12px; font-weight: 600; }
-.subnav button:hover { background: var(--surface-2); color: var(--ink); }
-.subnav button.active { background: var(--green); color: #fff; }
+.detail-page { display: grid; gap: 18px; }
+.detail-tabs { width: fit-content; max-width: 100%; display: flex; gap: 4px; padding: 6px; overflow-x: auto; box-shadow: var(--shadow-sm); }
+.detail-tabs button { border: 0; padding: 10px 15px; border-radius: 9px; background: transparent; text-align: center; white-space: nowrap; color: var(--muted); cursor: pointer; font-size: 12px; font-weight: 600; }
+.detail-tabs button:hover { background: var(--surface-2); color: var(--ink); }
+.detail-tabs button.active { background: var(--green); color: #fff; }
 .content-panel { min-width: 0; }
 .sensor-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; }
 .sensor-chip { padding: 13px 14px; min-width: 0; }
@@ -140,6 +141,7 @@ h3 { font: 700 14px/1.35 "Manrope"; }
 .sensor-chip strong { display: block; margin-top: 7px; font: 700 19px/1 "Manrope"; }
 .sensor-chip small { color: var(--subtle); font-size: 10px; }
 .sensor-chip .tiny-line { height: 24px; margin-top: 6px; }
+.sensor-chip .tiny-line { pointer-events: none; }
 
 .chart-card { padding: 22px; }
 .chart-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
@@ -207,6 +209,7 @@ h3 { font: 700 14px/1.35 "Manrope"; }
 .wizard-form .field { margin-bottom: 18px; }
 .wizard-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 31px; }
 .device-option { display: flex; align-items: center; gap: 14px; padding: 15px; border: 1px solid var(--line); border-radius: 13px; cursor: pointer; transition: .18s ease; }
+.device-option { width: 100%; background: var(--surface); color: var(--ink); text-align: left; }
 .device-option + .device-option { margin-top: 10px; }
 .device-option.selected { border-color: #65a986; background: #f3faf5; box-shadow: 0 0 0 3px rgba(29,123,80,.07); }
 .device-icon { width: 39px; height: 39px; border-radius: 11px; background: var(--green-soft); color: var(--green); display: grid; place-items: center; }
@@ -217,6 +220,14 @@ h3 { font: 700 14px/1.35 "Manrope"; }
 .check { width: 20px; height: 20px; border: 1.5px solid #bdc7c0; border-radius: 6px; display: grid; place-items: center; color: transparent; }
 .selected .check { color: #fff; border-color: var(--green); background: var(--green); }
 .empty-state { padding: 30px; text-align: center; color: var(--muted); }
+.device-title { font-size: 16px; margin: 18px 0 4px; }
+.device-location { color: var(--muted); font-size: 11px; margin-bottom: 18px; }
+.device-reading { font-size: 22px; }
+.view-link { color: var(--green); font-size: 11px; font-weight: 700; }
+.panel-actions { display: flex; justify-content: flex-end; margin-top: -42px; }
+.device-panel-grid { margin-top: 20px; }
+.settings-save { margin-top: 18px; }
+.sidebar-backdrop { display: none; }
 
 #toast-root { position: fixed; right: 22px; bottom: 22px; z-index: 50; }
 .toast { min-width: 250px; padding: 13px 16px; color: #fff; background: #173d2b; border-radius: 12px; box-shadow: var(--shadow); font-size: 12px; animation: toast-in .25s ease; }
@@ -231,13 +242,12 @@ h3 { font: 700 14px/1.35 "Manrope"; }
   .shell { display: block; }
   .sidebar { position: fixed; z-index: 30; inset: 0 auto 0 0; width: 250px; transform: translateX(-105%); transition: transform .22s ease; box-shadow: var(--shadow); }
   .sidebar.open { transform: none; }
+  .sidebar-backdrop { display: block; position: fixed; z-index: 29; inset: 0; border: 0; background: rgba(10,25,17,.28); backdrop-filter: blur(2px); }
   .main { padding: 0 20px 40px; }
   .mobile-menu { display: grid; }
   .topbar { height: 70px; }
   .crumb { flex: 1; }
-  .workspace { grid-template-columns: 1fr; }
-  .subnav { display: flex; overflow-x: auto; }
-  .subnav button { width: auto; white-space: nowrap; }
+  .detail-tabs { width: 100%; }
   .onboarding { grid-template-columns: 1fr; }
   .onboard-side { display: none; }
   .onboard-main { padding: 32px 24px; }
