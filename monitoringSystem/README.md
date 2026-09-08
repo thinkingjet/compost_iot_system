@@ -1,34 +1,40 @@
-# CompostIQ React frontend
+# CompostIQ Dash monitoring system
 
-Responsive React mockup for the CompostIQ device onboarding, dashboard, bin,
-device, telemetry, maintenance, history, and configuration flows.
+The monitoring UI is implemented entirely with
+[Plotly Dash](https://dash.plotly.com/) and Python. It includes device and bin
+onboarding, overview cards, dedicated device/bin pages, live telemetry,
+maintenance tasks, historical analytics, and settings.
 
 ## Run locally
 
 ```bash
-npm install
-npm run dev
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python app.py
 ```
 
-Open `http://127.0.0.1:4173`. Detail views have dedicated paths such as
-`/device/live` and `/bin/history`; they are not embedded hash views.
+Open `http://127.0.0.1:8050`.
 
-Create a production build with:
+Dedicated pages include:
 
-```bash
-npm run build
-```
+- `/device/live`
+- `/device/history`
+- `/device/settings`
+- `/bin/live`
+- `/bin/maintenance`
+- `/bin/history`
+- `/bin/devices`
+- `/bin/settings`
 
 ## Structure
 
-- `src/components/` — reusable application shell, navigation, cards, fields,
-  buttons, icons, and other UI primitives.
-- `src/components/charts/PlotlyCharts.jsx` — reusable Plotly wrapper and all
-  chart types. Shared layout and configuration live here.
-- `src/pages/` — route-level compositions built from shared components.
-- `src/context/AppContext.jsx` — onboarding state and application toasts.
-- `src/data/mockData.js` — placeholder telemetry, devices, bins, and tasks.
-- `src/router.jsx` — lightweight history routing with dedicated page paths.
+- `app.py` — Dash server, routing, stores, and callbacks.
+- `components.py` — reusable layout, card, navigation, form, and graph factories.
+- `pages.py` — page-level compositions built from reusable components.
+- `figures.py` — all Python Plotly figure factories and shared graph settings.
+- `data.py` — deterministic placeholder data.
+- `assets/styles.css` — visual design and responsive styles loaded automatically by Dash.
 
-All graphs—including card sparklines—are Plotly charts. Replace the arrays in
-`mockData.js` with API response data when the Flask endpoints are connected.
+All visualizations, including sparklines, are Dash `dcc.Graph` components using
+Python `plotly.graph_objects` figures.
