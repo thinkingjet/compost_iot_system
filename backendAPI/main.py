@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from pydantic import BaseModel
 import datetime
 from sqlalchemy import create_engine, text
@@ -52,11 +52,27 @@ async def root():
     return {"message": "Hello World"}
 
 @app.post("/records")
-async def send_records (readings: list[Record]):
-    device_id = "28d7f6b0-20ab-4d41-906b-31b6634b56ea"
-    bin_id = "33155618-6336-4447-9f64-a80ae4802b36"
+async def send_records (readings: list[Record], device_id: str = Depends(authentication)):
+    # If the auth was successful and the API key in the request header is valid, we have the device's id
+    # We still however need to get the bin_id from the bin table
+
     with db_engine.connect() as db:
         print(f"Database connection was successful: {db}")
+        
+        result = db.execute(text("""
+                                SELECT bin_id FROM device_bin_assn 
+                                WHERE device_id = :device_id AND unassigned_at is NULL
+                              """),
+                              {
+                                  "device_id":device_id
+                              })
+        res = result.first()
+
+        if res is None:
+            raise HTTPException(status_code=409, detail="The device_id was received successfully after authentication, however this device_id does not exist in the device_bin_assn DB table.")
+        else:
+            bin_id = res.bin_id
+
         for reading in readings:
             db.execute(text("""
                             INSERT INTO records (device_id, bin_id, timestamp, 
