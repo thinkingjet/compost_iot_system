@@ -43,10 +43,9 @@ def authentication(api_key: str = Security(api_key_header)):
         )
         res = result.first()
     if res is None:
-        raise HTTPException(status_code=401, "Authentication failed: invalid API key.")
+        raise HTTPException(status_code=401, detail="Authentication failed: invalid API key.")
     else:
         return res.device_id
-    return "This should never happen."
 
 @app.get("/")
 async def root():
