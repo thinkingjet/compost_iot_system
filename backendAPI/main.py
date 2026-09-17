@@ -21,10 +21,6 @@ app = FastAPI()
 
 POSTGRES_DB_URL = "postgresql+psycopg2://postgres:devpassword@localhost:5432/compostiq"
 db_engine = create_engine(POSTGRES_DB_URL)
-# with db_engine.connect() as connection:
-#     result = connection.execute(text("SELECT count(*) FROM USERS"))
-#     for row in result:
-#         print(row)
 
 api_key_header = APIKeyHeader(name = "x-key")
 
@@ -53,12 +49,9 @@ async def root():
 
 @app.post("/records")
 async def send_records (readings: list[Record], device_id: str = Depends(authentication)):
-    # If the auth was successful and the API key in the request header is valid, we have the device's id
-    # We still however need to get the bin_id from the bin table
-
     with db_engine.connect() as db:
         print(f"Database connection was successful: {db}")
-        
+
         result = db.execute(text("""
                                 SELECT bin_id FROM device_bin_assn 
                                 WHERE device_id = :device_id AND unassigned_at is NULL
