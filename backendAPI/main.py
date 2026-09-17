@@ -4,6 +4,9 @@ import datetime
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from fastapi import Security, HTTPException
+from fastapi.security import APIKeyHeader
+import hashlib
 
 
 class Record(BaseModel):
@@ -23,6 +26,27 @@ db_engine = create_engine(POSTGRES_DB_URL)
 #     for row in result:
 #         print(row)
 
+api_key_header = APIKeyHeader(name = "x-key")
+
+def authentication(api_key: str = Security(api_key_header)):
+    key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+    with db_engine.connect() as db:
+        result = db.execute(text(
+            """
+            SELECT device_id FROM device_apikeys
+            WHERE api_key_hash = :key_hash AND revoked_at IS NULL
+            """
+        ),
+        {
+            "key_hash": key_hash
+        }
+        )
+        res = result.first()
+    if res is None:
+        raise HTTPException(status_code=401, "Authentication failed: invalid API key.")
+    else:
+        return res.device_id
+    return "This should never happen."
 
 @app.get("/")
 async def root():
