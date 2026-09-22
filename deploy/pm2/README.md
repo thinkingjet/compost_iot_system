@@ -5,8 +5,8 @@ PostgreSQL runs as its own systemd service and is only reachable from the VM its
 
 | Component | Managed by | Listens on | Public? |
 |---|---|---|---|
-| Dashboard (Dash, via gunicorn) | PM2 `compostiq-dashboard` | `127.0.0.1:8050` | Yes, through NGINX at `/` |
-| API (via uvicorn) | PM2 `compostiq-api` | `127.0.0.1:8000` | Yes, through NGINX at `/api/` |
+| Dashboard (Dash, via gunicorn) | PM2 `compostiq-dashboard` | `127.0.0.1:8050` | Yes, at `https://dashboard.compostiq.win` |
+| API (via uvicorn) | PM2 `compostiq-api` | `127.0.0.1:8000` | Yes, at `https://api.compostiq.win` |
 | PostgreSQL | systemd `postgresql` | `127.0.0.1:5432` | No |
 
 ## 1. Install system packages
@@ -78,5 +78,5 @@ To deploy new code, run `git pull` and `uv sync`, then restart both apps.
 ## Notes
 
 - **API entry point.** The API isn't written yet. The ecosystem file assumes a Python ASGI app such as FastAPI at `backendAPI/main.py` exposing `app`. Change the `args` line if that ends up different.
-- **API routes.** NGINX forwards `/api/...` with the prefix intact, so API routes should start with `/api`.
+- **API routes.** The API has its own subdomain, so its routes need no `/api` prefix.
 - **Dashboard workers.** The simulator stores runs on disk, so two gunicorn workers are safe.
