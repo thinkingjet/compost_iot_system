@@ -6,6 +6,8 @@ requires-python = ">=3.12"
 dependencies = [
     "dash>=4.4.1",
     "dash-mantine-components>=2.8.0",
+    "gunicorn>=26.2.0",
     "pandas>=3.0.5",
     "plotly>=6.9.0",
+    "uvicorn>=0.53.0",
 ]
