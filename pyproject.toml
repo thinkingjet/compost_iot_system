@@ -11,3 +11,8 @@ dependencies = [
     "plotly>=6.9.0",
     "uvicorn>=0.53.0",
 ]
+
+[tool.uv.workspace]
+members = [
+    "backendAPI",
+]

@@ -2,6 +2,7 @@ CLAUDE.md
 .venv
 __pycache__/
 data/
+.env
 # generated simulator runs (recreated by simulator/app.py on demand)
 simulator/Data/
 
