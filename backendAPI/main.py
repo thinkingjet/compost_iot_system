@@ -8,6 +8,8 @@ from fastapi import Security, HTTPException
 from fastapi.security import APIKeyHeader
 import hashlib
 
+from config import settings
+
 
 class Record(BaseModel):
     timestamp: datetime.datetime
@@ -19,8 +21,7 @@ class Record(BaseModel):
 
 app = FastAPI()
 
-POSTGRES_DB_URL = "postgresql+psycopg2://postgres:devpassword@localhost:5432/compostiq"
-db_engine = create_engine(POSTGRES_DB_URL)
+db_engine = create_engine(settings.database_url)
 
 api_key_header = APIKeyHeader(name = "x-key")
 
