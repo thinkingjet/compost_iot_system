@@ -9,6 +9,9 @@ dependencies = [
     "gunicorn>=26.2.0",
     "pandas>=3.0.5",
     "plotly>=6.9.0",
+    "python-dotenv>=1.2.3",
+    "requests>=2.34.2",
+    "tzdata>=2026.3",
     "uvicorn>=0.53.0",
 ]
 

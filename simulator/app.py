@@ -12,6 +12,7 @@ import os
 import random
 import sys
 from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 # generator.py and composting_stages.py import each other by bare name, so the
 # simulator folder has to be importable regardless of where this was launched
@@ -26,6 +27,22 @@ import generator
 import run_store
 from ui import charts, layout
 from ui.theme import THEME, figure_template, icon, register_figure_templates
+
+# generator column -> API field. Only mapped columns are sent, so stage_id and
+# stage_name (the ML ground-truth labels) never leave the saved JSON: a real
+# sensor cannot measure them
+FIELD_MAP = {
+    "timestamp": "timestamp",
+    "temperature_c": "temperature",
+    "moisture_pct": "moisture_percent",
+    "o2_pct": "o2_percent",
+    "co2_pct": "co2_percent",
+    "nh3_relative": "nh3_ratio",
+}
+BATCH_SIZE = 500
+# the generator's timestamps are naive; without an offset Postgres would read
+# them in the VM's timezone and shift every reading. Lombok is fixed UTC+8
+SITE_TIMEZONE = ZoneInfo("Asia/Makassar")
 
 # apply the stored light/dark choice before the first paint, so there is no
 # flash of the wrong theme on reload
@@ -107,6 +124,26 @@ def pick_active_tab(runs, current):
     if current in run_ids:
         return current
     return run_ids[-1] if run_ids else None
+
+
+def build_readings(run_id):
+    """A saved run as the API's payload: mapped fields only, offset-aware times."""
+    df = run_store.load_dataframe(run_id)
+    if df.empty:
+        return []
+
+    missing = [column for column in FIELD_MAP if column not in df.columns]
+    if missing:
+        raise KeyError("this run is missing columns: %s" % ", ".join(missing))
+
+    readings = df[list(FIELD_MAP)].rename(columns=FIELD_MAP)
+    readings["timestamp"] = df["timestamp"].dt.tz_localize(SITE_TIMEZONE).map(lambda t: t.isoformat())
+    return readings.to_dict(orient="records")
+
+
+def batch_readings(readings):
+    """Split readings into API-sized chunks. Nothing is sent from here."""
+    return [readings[start:start + BATCH_SIZE] for start in range(0, len(readings), BATCH_SIZE)]
 
 
 # ----------------------------------------------------------- callbacks -----

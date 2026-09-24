@@ -2,3 +2,6 @@ dash
 dash-mantine-components
 plotly
 pandas
+requests
+python-dotenv
+tzdata
