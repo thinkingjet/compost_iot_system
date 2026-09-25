@@ -29,6 +29,7 @@ if THIS_FOLDER not in sys.path:
     sys.path.insert(0, THIS_FOLDER)
 
 import dash_mantine_components as dmc
+import requests
 from dash import ALL, Dash, Input, Output, State, callback, ctx, dcc, html, no_update
 
 import generator
@@ -152,6 +153,39 @@ def build_readings(run_id):
 def batch_readings(readings):
     """Split readings into API-sized chunks. Nothing is sent from here."""
     return [readings[start:start + BATCH_SIZE] for start in range(0, len(readings), BATCH_SIZE)]
+
+
+def upload_cycle(run_id):
+    """Send a saved cycle to the API, one batch per request.
+
+    Returns (number of readings sent, error message or None). Stops at the
+    first failed batch; batches sent before it are already stored.
+    """
+    readings = build_readings(run_id)
+    sent = 0
+
+    for batch in batch_readings(readings):
+        try:
+            response = requests.post(
+                url + "/records",
+                json=batch,
+                headers={"x-key": key},
+                timeout=30,
+            )
+        except requests.exceptions.RequestException:
+            return sent, "Could not reach the API at %s. Is the SSH tunnel open?" % url
+
+        if not response.ok:
+            return sent, "The API returned %d: %s" % (response.status_code, response.text[:200])
+
+        sent += len(batch)
+
+    return sent, None
+
+
+def upload_alert(title, text, color):
+    return dmc.Alert(text, title=title, color=color, variant="light",
+                     withCloseButton=True, icon=icon("cloud-upload", 18))
 
 
 # ----------------------------------------------------------- callbacks -----
@@ -358,29 +392,26 @@ def download_run(_clicks, runs):
     State("run-index", "data"),
     prevent_initial_call=True,
 )
-def mock_cloud_upload(_clicks, runs):
-    """Stand-in for pushing a cycle to the backend API.
-
-    Deliberately does nothing but say so - there is no endpoint yet, and a
-    button that silently pretended to succeed would be worse than none.
-    """
+def cloud_upload(_clicks, _runs):
+    """Upload the clicked cycle's readings to the ingest API."""
     trigger = ctx.triggered_id
     if not isinstance(trigger, dict) or not (ctx.triggered and ctx.triggered[0]["value"]):
         return no_update
 
-    meta = next((m for m in (runs or []) if m["run_id"] == trigger["index"]), None)
-    rows = (meta or {}).get("summary", {}).get("rows", 0)
+    if not url or not key:
+        return upload_alert("Upload not configured",
+                            "Set API_URL and SIMULATOR_API_KEY in simulator/.env, "
+                            "then restart the simulator.", "orange")
 
-    return dmc.Alert(
-        "Would have sent {:,} readings to the CompostIQ ingest endpoint. "
-        "Nothing left this machine — this button is a mock until the backend "
-        "API is built.".format(rows),
-        title="Cloud upload (mock)",
-        color="blue",
-        variant="light",
-        withCloseButton=True,
-        icon=icon("cloud-upload", 18),
-    )
+    sent, error = upload_cycle(trigger["index"])
+
+    if error:
+        message = "%s %d readings were sent before it stopped." % (error, sent)
+        if sent > 0:
+            message += " Uploading this cycle again will duplicate them."
+        return upload_alert("Upload failed", message, "red")
+
+    return upload_alert("Uploaded", "Sent %d readings to %s." % (sent, url), "teal")
 
 
 if __name__ == "__main__":
