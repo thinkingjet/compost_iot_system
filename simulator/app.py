@@ -14,6 +14,14 @@ import sys
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.abspath(os.path.dirname(os.path.abspath(__file__))), ".env"))
+
+url = os.getenv("API_URL")
+key = os.getenv("SIMULATOR_API_KEY")
+
+
 # generator.py and composting_stages.py import each other by bare name, so the
 # simulator folder has to be importable regardless of where this was launched
 THIS_FOLDER = os.path.dirname(os.path.abspath(__file__))
