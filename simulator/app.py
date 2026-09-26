@@ -12,6 +12,15 @@ import os
 import random
 import sys
 from datetime import date, datetime
+from zoneinfo import ZoneInfo
+
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.abspath(os.path.dirname(os.path.abspath(__file__))), ".env"))
+
+url = os.getenv("API_URL")
+key = os.getenv("SIMULATOR_API_KEY")
+
 
 # generator.py and composting_stages.py import each other by bare name, so the
 # simulator folder has to be importable regardless of where this was launched
@@ -20,12 +29,29 @@ if THIS_FOLDER not in sys.path:
     sys.path.insert(0, THIS_FOLDER)
 
 import dash_mantine_components as dmc
+import requests
 from dash import ALL, Dash, Input, Output, State, callback, ctx, dcc, html, no_update
 
 import generator
 import run_store
 from ui import charts, layout
 from ui.theme import THEME, figure_template, icon, register_figure_templates
+
+# generator column -> API field. Only mapped columns are sent, so stage_id and
+# stage_name (the ML ground-truth labels) never leave the saved JSON: a real
+# sensor cannot measure them
+FIELD_MAP = {
+    "timestamp": "timestamp",
+    "temperature_c": "temperature",
+    "moisture_pct": "moisture_percent",
+    "o2_pct": "o2_percent",
+    "co2_pct": "co2_percent",
+    "nh3_relative": "nh3_ratio",
+}
+BATCH_SIZE = 500
+# the generator's timestamps are naive; without an offset Postgres would read
+# them in the VM's timezone and shift every reading. Lombok is fixed UTC+8
+SITE_TIMEZONE = ZoneInfo("Asia/Makassar")
 
 # apply the stored light/dark choice before the first paint, so there is no
 # flash of the wrong theme on reload
@@ -107,6 +133,59 @@ def pick_active_tab(runs, current):
     if current in run_ids:
         return current
     return run_ids[-1] if run_ids else None
+
+
+def build_readings(run_id):
+    """A saved run as the API's payload: mapped fields only, offset-aware times."""
+    df = run_store.load_dataframe(run_id)
+    if df.empty:
+        return []
+
+    missing = [column for column in FIELD_MAP if column not in df.columns]
+    if missing:
+        raise KeyError("this run is missing columns: %s" % ", ".join(missing))
+
+    readings = df[list(FIELD_MAP)].rename(columns=FIELD_MAP)
+    readings["timestamp"] = df["timestamp"].dt.tz_localize(SITE_TIMEZONE).map(lambda t: t.isoformat())
+    return readings.to_dict(orient="records")
+
+
+def batch_readings(readings):
+    """Split readings into API-sized chunks. Nothing is sent from here."""
+    return [readings[start:start + BATCH_SIZE] for start in range(0, len(readings), BATCH_SIZE)]
+
+
+def upload_cycle(run_id):
+    """Send a saved cycle to the API, one batch per request.
+
+    Returns (number of readings sent, error message or None). Stops at the
+    first failed batch; batches sent before it are already stored.
+    """
+    readings = build_readings(run_id)
+    sent = 0
+
+    for batch in batch_readings(readings):
+        try:
+            response = requests.post(
+                url + "/records",
+                json=batch,
+                headers={"x-key": key},
+                timeout=30,
+            )
+        except requests.exceptions.RequestException:
+            return sent, "Could not reach the API at %s. Is the SSH tunnel open?" % url
+
+        if not response.ok:
+            return sent, "The API returned %d: %s" % (response.status_code, response.text[:200])
+
+        sent += len(batch)
+
+    return sent, None
+
+
+def upload_alert(title, text, color):
+    return dmc.Alert(text, title=title, color=color, variant="light",
+                     withCloseButton=True, icon=icon("cloud-upload", 18))
 
 
 # ----------------------------------------------------------- callbacks -----
@@ -313,29 +392,26 @@ def download_run(_clicks, runs):
     State("run-index", "data"),
     prevent_initial_call=True,
 )
-def mock_cloud_upload(_clicks, runs):
-    """Stand-in for pushing a cycle to the backend API.
-
-    Deliberately does nothing but say so - there is no endpoint yet, and a
-    button that silently pretended to succeed would be worse than none.
-    """
+def cloud_upload(_clicks, _runs):
+    """Upload the clicked cycle's readings to the ingest API."""
     trigger = ctx.triggered_id
     if not isinstance(trigger, dict) or not (ctx.triggered and ctx.triggered[0]["value"]):
         return no_update
 
-    meta = next((m for m in (runs or []) if m["run_id"] == trigger["index"]), None)
-    rows = (meta or {}).get("summary", {}).get("rows", 0)
+    if not url or not key:
+        return upload_alert("Upload not configured",
+                            "Set API_URL and SIMULATOR_API_KEY in simulator/.env, "
+                            "then restart the simulator.", "orange")
 
-    return dmc.Alert(
-        "Would have sent {:,} readings to the CompostIQ ingest endpoint. "
-        "Nothing left this machine — this button is a mock until the backend "
-        "API is built.".format(rows),
-        title="Cloud upload (mock)",
-        color="blue",
-        variant="light",
-        withCloseButton=True,
-        icon=icon("cloud-upload", 18),
-    )
+    sent, error = upload_cycle(trigger["index"])
+
+    if error:
+        message = "%s %d readings were sent before it stopped." % (error, sent)
+        if sent > 0:
+            message += " Uploading this cycle again will duplicate them."
+        return upload_alert("Upload failed", message, "red")
+
+    return upload_alert("Uploaded", "Sent %d readings to %s." % (sent, url), "teal")
 
 
 if __name__ == "__main__":

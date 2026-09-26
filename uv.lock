@@ -269,6 +269,9 @@ dependencies = [
     { name = "gunicorn" },
     { name = "pandas" },
     { name = "plotly" },
+    { name = "python-dotenv" },
+    { name = "requests" },
+    { name = "tzdata" },
     { name = "uvicorn" },
 ]
 
@@ -279,6 +282,9 @@ requires-dist = [
     { name = "gunicorn", specifier = ">=26.2.0" },
     { name = "pandas", specifier = ">=3.0.5" },
     { name = "plotly", specifier = ">=6.9.0" },
+    { name = "python-dotenv", specifier = ">=1.2.3" },
+    { name = "requests", specifier = ">=2.34.2" },
+    { name = "tzdata", specifier = ">=2026.3" },
     { name = "uvicorn", specifier = ">=0.53.0" },
 ]
 

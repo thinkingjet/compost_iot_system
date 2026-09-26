@@ -568,18 +568,15 @@ def cycle_summary(meta, df):
                                 ),
                                 dmc.Tooltip(
                                     dmc.Button(
-                                        "Upload to cloud",
+                                        "Upload to API",
                                         id={"type": "upload-run", "index": meta["run_id"]},
                                         leftSection=icon("cloud-upload", 16),
-                                        rightSection=dmc.Badge(
-                                            "mock", size="xs", variant="filled", color="gray"
-                                        ),
                                         variant="default",
                                         size="xs",
                                         n_clicks=0,
                                     ),
-                                    label="Mocked — nothing is sent anywhere. "
-                                          "Here for the demo until the backend API exists.",
+                                    label="Sends this cycle's sensor readings to the API "
+                                          "set in simulator/.env. Stage labels are not sent.",
                                     withArrow=True,
                                     multiline=True,
                                     w=260,
