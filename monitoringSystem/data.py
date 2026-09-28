@@ -1,6 +1,5 @@
 from math import cos, exp, sin
 
-
 HOURS = [f"{hour:02d}:00" for hour in range(24)]
 
 
@@ -34,15 +33,15 @@ HISTORICAL = {
 }
 
 METRICS = [
-    {"label": "Temperature", "value": "54.2", "unit": "°C", "delta": "+2.4%", "icon": "♨", "color": "red", "values": TELEMETRY["temperature"]},
-    {"label": "Moisture", "value": "50.7", "unit": "%", "delta": "Within target", "icon": "◒", "color": "blue", "values": TELEMETRY["moisture"]},
-    {"label": "Oxygen", "value": "20.4", "unit": "%", "delta": "+0.8%", "icon": "≋", "color": "green", "values": TELEMETRY["oxygen"]},
-    {"label": "Compost health", "value": "86", "unit": "/ 100", "delta": "Optimal", "icon": "⌁", "color": "lime", "values": HISTORICAL["health"][-24:]},
+    {"label": "Temperature", "value": "54.2", "unit": "°C", "delta": "+2.4%", "icon": "temperature", "color": "temperature", "values": TELEMETRY["temperature"]},
+    {"label": "Moisture", "value": "50.7", "unit": "%", "delta": "Within target", "icon": "droplet", "color": "moisture", "values": TELEMETRY["moisture"]},
+    {"label": "Oxygen", "value": "20.4", "unit": "%", "delta": "+0.8%", "icon": "wind", "color": "oxygen", "values": TELEMETRY["oxygen"]},
+    {"label": "Compost health", "value": "86", "unit": "/ 100", "delta": "Optimal", "icon": "heart", "color": "health", "values": HISTORICAL["health"][-24:]},
 ]
 
 BINS = [
     {"id": "bin-1", "name": "Bin 1", "location": "UNRAM", "devices": 2, "phase": "Peak decomposition", "health": 86},
-    {"id": "bin-3", "name": "Bin 3", "location": "Mataram", "devices": 1, "phase": "Active thermophilic", "health": 74, "variant": "blue"},
+    {"id": "bin-3", "name": "Bin 3", "location": "Mataram", "devices": 1, "phase": "Active thermophilic", "health": 74},
     {"id": "school", "name": "Primary School", "location": "Lombok", "devices": 1, "phase": "Cooling", "health": 68},
 ]
 
@@ -58,12 +57,10 @@ MAINTENANCE_TASKS = [
     {"title": "Transition to maturation phase", "detail": "The compost is progressing normally.", "time": "In 10 days"},
 ]
 
-DEFAULT_SETUP = {
-    "device_name": "Outer Sensor",
-    "location": "Bin 1 · UNRAM",
-    "bin_name": "Bin 1",
-    "compost_type": "Takakura",
-    "material": "Food scraps + dry leaves",
-    "capacity": "240",
-    "assigned": ["outer"],
-}
+COUNTRIES = [
+    {"value": "ID", "label": "Indonesia"},
+    {"value": "AU", "label": "Australia"},
+    {"value": "NZ", "label": "New Zealand"},
+    {"value": "SG", "label": "Singapore"},
+    {"value": "MY", "label": "Malaysia"},
+]

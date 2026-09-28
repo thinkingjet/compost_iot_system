@@ -1,167 +1,290 @@
-from dash import dcc, html
+from itertools import count
 
+import dash_mantine_components as dmc
+from dash import dcc
 from figures import GRAPH_CONFIG, sparkline
+from theme import SENSOR_COLORS, icon
 
+# every dcc.Graph gets a {"type": "graph"} id so app.py can re-template all of
+# them when the colour scheme changes (the pattern the DMC docs recommend)
+_graph_ids = count()
+
+
+# ------------------------------------------------------------ primitives ---
 
 def brand():
-    return html.Div([html.Span("⌁", className="brand-mark"), "CompostIQ"], className="brand")
+    return dmc.Group(
+        [
+            dmc.ThemeIcon(icon("leaf", 20), size=36, radius="md", variant="light"),
+            dmc.Stack(
+                [
+                    dmc.Text("CompostIQ", fw=700, size="md", lh=1.1),
+                    dmc.Text("Monitoring console", size="xs", c="dimmed", lh=1.1),
+                ],
+                gap=2,
+            ),
+        ],
+        gap="sm",
+    )
 
 
-def button(label, variant="primary", icon=None, component_id=None, button_type="button"):
-    children = ([html.Span(icon, className="button-icon")] if icon else []) + [label]
-    props = {"type": button_type, "className": f"btn btn-{variant}", "n_clicks": 0}
+def button(label, variant="filled", icon_name=None, component_id=None, **kwargs):
+    props = {"variant": variant, "n_clicks": 0, **kwargs}
+    if icon_name:
+        props["leftSection"] = icon(icon_name, 16)
     if component_id is not None:
         props["id"] = component_id
-    return html.Button(children, **props)
+    return dmc.Button(label, **props)
 
 
-def linked_button(label, href, variant="primary", icon=None):
-    return dcc.Link(button(label, variant, icon), href=href, className="button-link")
+def linked_button(label, href, variant="filled", icon_name=None):
+    """A Button that navigates to `href`.
+
+    dmc.Button has no href and must not be nested inside a link, so the
+    target rides in the pattern-matching id and app.py's `navigate` callback
+    moves the dcc.Location.
+    """
+    return button(label, variant, icon_name, component_id={"type": "nav-button", "href": href})
 
 
 def page_header(eyebrow, title, description, action=None):
-    return html.Div(
-        [html.Div([html.P(eyebrow, className="eyebrow"), html.H1(title), html.P(description)]), action],
-        className="page-head",
+    return dmc.Group(
+        [
+            dmc.Stack(
+                [
+                    dmc.Text(eyebrow, size="xs", fw=700, tt="uppercase", c="dimmed"),
+                    dmc.Title(title, order=1),
+                    dmc.Text(description, c="dimmed"),
+                ],
+                gap=4,
+            ),
+            action,
+        ],
+        justify="space-between",
+        align="flex-end",
+        mb="lg",
     )
 
 
 def section_header(title, action_label=None, action_href=None, action_id=None):
     action = None
     if action_href:
-        action = dcc.Link(action_label, href=action_href, className="text-action")
+        action = dmc.Anchor(action_label, href=action_href, size="sm", fw=600)
     elif action_label:
-        action = html.Button(action_label, id=action_id, className="text-action", n_clicks=0)
-    return html.Div([html.H2(title), action], className="section-head")
+        action = dmc.Button(action_label, id=action_id, variant="subtle", size="compact-sm", n_clicks=0)
+    return dmc.Group([dmc.Title(title, order=3), action], justify="space-between", mb="sm")
 
 
-def field(label, control):
-    return html.Div([html.Label(label), control], className="field")
+def graph_id(name=None):
+    return {"type": "graph", "index": name if name is not None else f"g{next(_graph_ids)}"}
 
 
-def plot(figure, class_name="chart", static=False, graph_id=None):
+def plot(figure, static=False, name=None):
     config = {**GRAPH_CONFIG, "staticPlot": static}
     height = figure.layout.height or 260
-    props = {"figure": figure, "config": config, "className": class_name, "responsive": "auto", "style": {"height": f"{height}px"}}
-    if graph_id is not None:
-        props["id"] = graph_id
-    return dcc.Graph(**props)
+    return dcc.Graph(
+        id=graph_id(name),
+        figure=figure,
+        config=config,
+        responsive=True,
+        style={"height": f"{height}px"},
+    )
 
+
+def online_badge():
+    return dmc.Badge("Online", color="green", variant="dot", size="sm")
+
+
+# ------------------------------------------------------------------ cards ---
 
 def metric_card(metric):
-    return html.Article(
+    color = SENSOR_COLORS.get(metric["color"], metric["color"])
+    return dmc.Card(
         [
-            html.Div([html.Span(metric["label"]), html.I(metric["icon"], className="metric-icon")], className="metric-top"),
-            html.Div([metric["value"], " ", html.Small(metric["unit"])], className="metric-value"),
-            html.Div([html.B(metric["delta"]), " · last 24 hours"], className="metric-delta"),
-            plot(sparkline(metric["values"], metric["color"]), "metric-spark", static=True),
+            dmc.Group(
+                [
+                    dmc.Text(metric["label"], size="sm", c="dimmed", fw=500),
+                    dmc.ThemeIcon(icon(metric["icon"], 16), variant="light", color=color, size="md"),
+                ],
+                justify="space-between",
+            ),
+            dmc.Group(
+                [dmc.Text(metric["value"], fz=28, fw=700, lh=1.2), dmc.Text(metric["unit"], size="sm", c="dimmed")],
+                gap=4,
+                align="baseline",
+                mt="xs",
+            ),
+            dmc.Text([dmc.Text(metric["delta"], span=True, fw=600, c=color), " · last 24 hours"], size="xs", c="dimmed"),
+            plot(sparkline(metric["values"], metric["color"]), static=True),
         ],
-        className="card card-pad metric",
+        padding="md",
     )
+
+
+def _card_link(card, href):
+    # a Card holds no interactive children here, so the whole card can be the link
+    return dmc.Anchor(card, href=href, underline="never", c="inherit", className="ciq-card-link")
 
 
 def bin_card(bin_data):
     device_label = "device" if bin_data["devices"] == 1 else "devices"
-    card = html.Article(
+    card = dmc.Card(
         [
-            html.Div(
+            dmc.CardSection(
                 [
-                    html.Div(
+                    dmc.Group(
                         [
-                            html.Div([html.Strong(bin_data["name"]), html.Div(f'{bin_data["location"]} · {bin_data["devices"]} {device_label}', className="unit-location")]),
-                            html.Span("⌁", className="phase-orb"),
+                            dmc.Stack(
+                                [
+                                    dmc.Text(bin_data["name"], fw=600),
+                                    dmc.Text(f'{bin_data["location"]} · {bin_data["devices"]} {device_label}', size="xs", c="dimmed"),
+                                ],
+                                gap=0,
+                            ),
+                            dmc.ThemeIcon(icon("bin", 16), variant="light", size="md"),
                         ],
-                        className="unit-head",
+                        justify="space-between",
+                        align="flex-start",
                     ),
-                    plot(sparkline([48, 51, 50, 56, 54, 60, 63, 61, 68], "green"), "mini-chart", static=True),
+                    plot(sparkline([48, 51, 50, 56, 54, 60, 63, 61, 68], "health"), static=True),
                 ],
-                className=f'unit-visual {bin_data.get("variant", "")}',
+                p="md",
+                withBorder=True,
             ),
-            html.Div(
-                [
-                    html.Div([html.Span(bin_data["phase"], className="phase"), html.Span([html.I(className="dot"), " Online"], className="tag")], className="unit-row"),
-                    html.Div([html.Span(["Health score ", html.Span(html.I(style={"width": f'{bin_data["health"]}%'}), className="health-bar")], className="health"), html.Strong(f'{bin_data["health"]}%')], className="unit-row"),
-                ],
-                className="unit-body",
+            dmc.Group([dmc.Badge(bin_data["phase"], variant="light"), online_badge()], justify="space-between", mt="md"),
+            dmc.Group(
+                [dmc.Text("Health score", size="sm", c="dimmed"), dmc.Text(f'{bin_data["health"]}%', size="sm", fw=700)],
+                justify="space-between",
+                mt="sm",
             ),
+            dmc.Progress(value=bin_data["health"], size="sm", mt=6),
         ],
-        className="card unit-card",
+        padding="md",
     )
-    return dcc.Link(card, href="/bin/live", className="card-link")
+    return _card_link(card, "/bin/live")
 
 
 def device_card(device):
-    card = html.Article(
+    card = dmc.Card(
         [
-            html.Div([html.Span("▣", className="device-icon"), html.Span([html.I(className="dot"), " Online"], className="tag")], className="unit-row"),
-            html.H3(device["name"], className="device-title"),
-            html.P(f'Monitoring {device["location"]} · {device["model"]}', className="device-location"),
-            html.Div([html.Span(device["reading"], className="metric-value device-reading"), html.Span("View telemetry →", className="view-link")], className="unit-row"),
+            dmc.Group([dmc.ThemeIcon(icon("device", 18), variant="light", size="lg"), online_badge()], justify="space-between"),
+            dmc.Text(device["name"], fw=600, size="lg", mt="md"),
+            dmc.Text(f'Monitoring {device["location"]} · {device["model"]}', size="sm", c="dimmed"),
+            dmc.Group(
+                [
+                    dmc.Text(device["reading"], fz=24, fw=700),
+                    dmc.Group([dmc.Text("View telemetry", size="sm"), icon("arrow-right", 14)], gap=4, c="compost"),
+                ],
+                justify="space-between",
+                mt="md",
+            ),
         ],
-        className="card card-pad unit-card",
+        padding="md",
     )
-    return dcc.Link(card, href="/device/live", className="card-link")
+    return _card_link(card, "/device/live")
 
 
 def alert_card(kind, title, detail, priority):
-    return html.Article(
-        [
-            html.Span("♨" if kind == "hot" else "◒", className=f"alert-icon {kind}"),
-            html.Span([html.Strong(title), html.P(detail)], className="alert-copy"),
-            html.Span(priority, className="tag"),
-        ],
-        className="card alert-card",
+    color = "red" if kind == "hot" else "blue"
+    return dmc.Card(
+        dmc.Group(
+            [
+                dmc.ThemeIcon(icon("temperature" if kind == "hot" else "droplet", 18), color=color, variant="light", size="lg"),
+                dmc.Stack([dmc.Text(title, fw=600, size="sm"), dmc.Text(detail, size="sm", c="dimmed")], gap=2, flex=1),
+                dmc.Badge(priority, color=color, variant="light"),
+            ],
+            wrap="nowrap",
+            align="flex-start",
+        ),
+        padding="md",
     )
 
 
-def sidebar(active):
-    groups = [
-        ("Workspace", [("/dashboard", "⌂", "Overview", "dashboard"), ("/bins", "▱", "Compost bins", "bins"), ("/devices", "▣", "Devices", "devices")]),
-        ("Quick actions", [("/setup/device", "+", "Add device", "setup-device"), ("/setup/bin", "+", "Create bin", "setup-bin")]),
-    ]
-    children = [brand()]
-    for label, items in groups:
-        children.append(html.Div(label, className="nav-label"))
-        children.extend(
-            dcc.Link([html.Span(icon, className="nav-icon"), html.Span(text)], href=href, className=f"nav-item {'active' if active == key else ''}")
-            for href, icon, text, key in items
+# ------------------------------------------------------------------ shell ---
+
+NAV_GROUPS = [
+    (
+        "Workspace",
+        [
+            ("/dashboard", "home", "Overview"),
+            ("/bins", "bin", "Compost bins"),
+            ("/devices", "device", "Devices"),
+        ],
+    ),
+    (
+        "Quick actions",
+        [
+            ("/devices/add", "link", "Pair a device"),
+            ("/bins/new", "plus", "Create bin"),
+        ],
+    ),
+]
+
+
+def navbar():
+    links = []
+    for label, items in NAV_GROUPS:
+        links.append(dmc.Text(label, size="xs", fw=700, tt="uppercase", c="dimmed", mt="md", mb=4, px="sm"))
+        # active="exact" lets DMC highlight the current page without a callback
+        links.extend(
+            dmc.NavLink(label=text, href=href, leftSection=icon(icon_name, 18), active="exact", variant="light")
+            for href, icon_name, text in items
         )
-    children.append(html.Div(html.Div([html.Span("GU", className="avatar"), html.Span([html.Strong("UNRAM Pilot"), html.Span("Administrator")], className="account-copy")], className="account"), className="sidebar-footer"))
-    return html.Aside(children, className="sidebar", id="main-sidebar")
-
-
-def app_shell(content, title, active):
-    topbar = html.Header(
+    account = dmc.Group(
         [
-            html.Button("☰", id="mobile-menu", className="mobile-menu", n_clicks=0, **{"aria-label": "Open navigation"}),
-            html.Div([html.Span("CompostIQ"), html.Span("/"), html.Strong(title)], className="crumb"),
-            html.Div([html.Span([html.I(className="dot"), " All systems online"], className="status-pill"), html.Button("♧", id="notification-button", className="icon-btn", n_clicks=0, **{"aria-label": "Notifications"})], className="top-actions"),
+            dmc.Avatar("UP", color="compost", radius="xl"),
+            dmc.Stack([dmc.Text("UNRAM Pilot", size="sm", fw=600), dmc.Text("Administrator", size="xs", c="dimmed")], gap=0),
         ],
-        className="topbar",
+        gap="sm",
     )
-    return html.Div([sidebar(active), html.Main([topbar, content], className="main")], className="shell")
+    return dmc.AppShellNavbar(
+        [
+            dmc.AppShellSection(links, grow=True),
+            dmc.AppShellSection([dmc.Divider(mb="sm"), account]),
+        ],
+        p="md",
+    )
+
+
+def header():
+    return dmc.AppShellHeader(
+        dmc.Group(
+            [
+                dmc.Group([dmc.Burger(id="burger", size="sm", hiddenFrom="sm", opened=False), brand()], gap="md"),
+                dmc.Group(
+                    [
+                        dmc.Badge("All systems online", color="green", variant="dot", visibleFrom="sm"),
+                        dmc.ActionIcon(icon("bell", 18), id="notification-button", variant="default", size="lg", n_clicks=0, **{"aria-label": "Notifications"}),
+                        dmc.ColorSchemeToggle(id="color-scheme-toggle", lightIcon=icon("sun", 18), darkIcon=icon("moon", 18), variant="default", size="lg"),
+                    ],
+                    gap="sm",
+                ),
+            ],
+            justify="space-between",
+            h="100%",
+            px="md",
+        )
+    )
+
+
+def app_shell(page_root):
+    """The one AppShell for the app; pages render into `page_root`."""
+    return dmc.AppShell(
+        [header(), navbar(), dmc.AppShellMain(dmc.Container(page_root, size="xl", px={"base": 0, "sm": "md"}))],
+        header={"height": 64},
+        navbar={"width": 260, "breakpoint": "sm", "collapsed": {"mobile": True}},
+        padding="md",
+        id="appshell",
+    )
 
 
 def detail_tabs(kind, current):
     items = [("live", "Live telemetry"), ("history", "Historical stats"), ("settings", "Settings")]
     if kind == "bin":
         items = [("live", "Live telemetry"), ("maintenance", "Maintenance"), ("history", "Historical stats"), ("devices", "Devices"), ("settings", "Settings")]
-    return html.Nav(
-        [dcc.Link(label, href=f"/{kind}/{key}", className="active" if current == key else "") for key, label in items],
-        className="card detail-tabs",
-        **{"aria-label": f"{kind} sections"},
+    return dmc.Tabs(
+        dmc.TabsList([dmc.TabsTab(label, value=key) for key, label in items]),
+        id={"type": "detail-tabs", "kind": kind},
+        value=current,
+        mb="md",
     )
-
-
-def onboarding_shell(step, content):
-    features = ["Live environmental telemetry", "Actionable maintenance alerts", "Automatic phase detection"]
-    side = html.Section(
-        [
-            brand(),
-            html.Div([html.P("Smart composting", className="eyebrow"), html.H1("Better compost, backed by data."), html.P("Connect your sensors, monitor every batch, and know exactly when your compost needs attention."), html.Div([html.Span([html.I("✓"), feature], className="feature") for feature in features], className="feature-list")], className="onboard-hero"),
-            html.Div([html.Div(className="soil"), html.Div(className="bin-illustration")], className="onboard-art"),
-        ],
-        className="onboard-side",
-    )
-    wizard = html.Div([html.Div([html.Span(["Setup · ", html.B(f"Step {step} of 3")], className="step-label"), html.Span(html.I(style={"width": f"{step / 3 * 100}%"}), className="progress")], className="wizard-top"), content], className="wizard")
-    return html.Div([side, html.Section(wizard, className="onboard-main")], className="onboarding")
