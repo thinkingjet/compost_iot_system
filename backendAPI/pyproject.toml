@@ -11,3 +11,14 @@ dependencies = [
     "sqlalchemy>=2.0.52",
     "uvicorn>=0.52.4",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+# run from backendAPI/:  uv run pytest
+# integration tests need the local database:  docker compose up -d
+pythonpath = ["."]
+testpaths = ["tests"]
