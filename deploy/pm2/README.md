@@ -5,9 +5,11 @@ PostgreSQL runs as its own systemd service and is only reachable from the VM its
 
 | Component | Managed by | Listens on | Public? |
 |---|---|---|---|
-| Dashboard (Dash, via gunicorn) | PM2 `compostiq-dashboard` | `127.0.0.1:8050` | Yes, at `https://dashboard.compostiq.win` |
-| API (via uvicorn) | PM2 `compostiq-api` | `127.0.0.1:8000` | Yes, at `https://api.compostiq.win` |
+| Dashboard (`monitoringSystem/`, Dash + Mantine, via gunicorn) | PM2 `compostiq-dashboard` | `127.0.0.1:8050` | Yes, at `https://dashboard.compostiq.win` |
+| API (`backendAPI/`, FastAPI via uvicorn) | PM2 `compostiq-api` | `127.0.0.1:8000` | Yes, at `https://api.compostiq.win` |
 | PostgreSQL | systemd `postgresql` | `127.0.0.1:5432` | No |
+
+The simulator is **not** hosted on the VM. It is a self-hosted device that people run on their own machine, and it talks to the API like a real compost sensor would.
 
 ## 1. Install system packages
 
@@ -35,12 +37,12 @@ Ubuntu's PostgreSQL only listens on localhost by default. Keep it that way, and 
 ```bash
 git clone <repo-url> ~/compost_iot_system
 cd ~/compost_iot_system
-uv sync
+uv sync --all-packages  # --all-packages also installs the API's own dependencies (backendAPI/pyproject.toml)
 cp .env.example .env    # then edit .env and set the real DATABASE_URL password
 chmod 600 .env
 ```
 
-`ecosystem.config.js` reads `.env` from the repo root and passes its values to both apps.
+`ecosystem.config.js` reads `.env` from the repo root and gives each app only the variables it needs. The dashboard never receives `DATABASE_URL`. When an app starts reading a new variable, add its name to that app's `pick([...])` list.
 
 ## 4. Start the apps
 
@@ -73,10 +75,37 @@ pm2 restart compostiq-dashboard
 pm2 reload deploy/pm2/ecosystem.config.js --update-env   # after editing .env
 ```
 
-To deploy new code, run `git pull` and `uv sync`, then restart both apps.
+To deploy new code, run `git pull` and `uv sync --all-packages`, then restart both apps.
+
+## Moving an existing VM off the simulator (one-off)
+
+Before this change, `compostiq-dashboard` ran the **simulator** from `simulator/`. Anyone could reach it without signing in, and it held a real device API key. PM2 doesn't reliably pick up a changed working directory on `reload`, so recreate the process:
+
+```bash
+cd ~/compost_iot_system
+git pull && uv sync --all-packages
+pm2 delete compostiq-dashboard
+pm2 start deploy/pm2/ecosystem.config.js --only compostiq-dashboard
+pm2 reload deploy/pm2/ecosystem.config.js --only compostiq-api --update-env   # API now gets only its own env vars
+pm2 save
+curl -sI http://127.0.0.1:8050/ | head -1   # expect HTTP/1.1 200 OK
+```
+
+Then clean up what the simulator left behind:
+
+```bash
+rm -f simulator/.env      # held the simulator's device API key
+rm -rf simulator/Data     # generated runs, not needed on the VM
+```
+
+That key was reachable by anyone while the simulator was public, so revoke it in the database. Anyone running the simulator locally will then need a new key, until device pairing replaces manual keys.
+
+```sql
+UPDATE device_apikeys SET revoked_at = now()
+WHERE revoked_at IS NULL AND device_id = '<the simulator device id>';
+```
 
 ## Notes
 
-- **API entry point.** The API isn't written yet. The ecosystem file assumes a Python ASGI app such as FastAPI at `backendAPI/main.py` exposing `app`. Change the `args` line if that ends up different.
 - **API routes.** The API has its own subdomain, so its routes need no `/api` prefix.
-- **Dashboard workers.** The simulator stores runs on disk, so two gunicorn workers are safe.
+- **Dashboard workers.** The dashboard keeps no state on disk or in memory between requests, so two gunicorn workers are safe. Once sign-in lands, sessions live in a signed cookie, which also works across workers.
