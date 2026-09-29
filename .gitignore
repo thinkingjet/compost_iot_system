@@ -8,3 +8,4 @@ simulator/Data/
 
 # secrets
 .env
+.vscode/

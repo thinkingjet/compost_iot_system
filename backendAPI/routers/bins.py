@@ -7,7 +7,7 @@ scoped to the user, so another user's bin simply doesn't exist (404).
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import AfterValidator, BaseModel, BeforeValidator, Field
 from sqlalchemy import text
 
@@ -74,4 +74,21 @@ def create_bin(body: BinCreate, user=Depends(current_user)):
             ),
             {**body.model_dump(), "user_id": user.id},
         ).first()
+    return Bin(**row._mapping)
+
+
+@router.get("/{bin_id}", response_model = Bin)
+def get_specific_bin(bin_id: uuid.UUID, user = Depends(current_user)):
+    with db_engine.connect() as db:
+        row = db.execute(
+            text(
+                """
+                SELECT id, name, location, country_code FROM bins
+                WHERE id = :id AND user_id = :user_id
+                """
+            ),
+            {"id": bin_id, "user_id": user.id}
+        ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="The bin with the given ID does not exist.")
     return Bin(**row._mapping)
