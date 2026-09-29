@@ -176,8 +176,8 @@ sequenceDiagram
 
 ### What the device needs from the cloud
 
-The emulator is built against this contract. The API doesn't have
-`/pairing/redeem` yet; `tests/fake_cloud.py` implements it in the meantime.
+The API implements this in `backendAPI/routers/pairing.py`, and
+`tests/fake_cloud.py` implements it too, for running the emulator without the API.
 
 **`POST {PAIRING_PATH}`** (no auth; the code is the credential)
 
@@ -219,22 +219,28 @@ the device waits on.
    "moisture_percent": 54.8, "o2_percent": 3.1, "co2_percent": 8.7, "nh3_ratio": 0.91 }]
 ```
 
-### What the dashboard side needs (suggested, not built)
+### The dashboard's side
 
 The device doesn't call these; they're here so the whole flow is in one place.
+They're built (`backendAPI/routers/pairing.py`, `devices.py`, `bins.py`), and
+the dashboard's `/devices/add` wizard uses them. Details are in the
+[API README](../backendAPI/README.md#pairing-a-device).
 
 | Route | Called by | Does |
 | --- | --- | --- |
 | `POST /pairing/codes` | dashboard (JWT) | Issues `{code, expires_at}` for the signed-in user |
 | `GET /pairing/codes/{code}` | dashboard (JWT), polled | `pending`, `expired`, or `redeemed` with the device's ID, hardware ID and model; enables **Next** |
-| `POST /devices/{id}/setup` | dashboard (JWT) | Confirms the registration: `{name, bin_id}` or a new bin; opens the `device_bin_assn` row |
+| `POST /devices/{id}/setup` | dashboard (JWT) | Confirms the registration: `{name, bin_id}` (a new bin is made first with `POST /bins`); opens the `device_bin_assn` row |
+| `DELETE /devices/{id}` | dashboard (JWT) | "That's not my device", or unpairing later: revokes the key at once |
 
 If the user never confirms, the device stays owned but has no bin: the
-dashboard can list it as *Needs setup* so it can be finished later, and the
+dashboard lists it as *Needs setup* with a **Finish setup** button, and the
 device keeps checking back every `SETUP_CHECK_SECONDS`.
 
-Checked against the real API and the local Compose database: readings land in
-`records`, and a revoked key unpairs the device.
+Checked end to end with the emulator in Docker, the real API and the dashboard:
+- pairing, confirming, setting up with a new bin, and the first reading landing in `records`
+- resuming setup from the devices page
+- "That's not my device" unpairing it, after which the emulator's next call is rejected and it drops back to *Not paired*
 
 ## Uplink behaviour
 
@@ -298,8 +304,7 @@ python -m unittest        # or: pytest
 The suite has 39 tests and runs in about 2 seconds. It covers the model, pairing,
 the wait for setup, every uplink path against the fake cloud, and the web routes.
 
-To try the whole flow before the real pairing endpoint exists, run the fake
-cloud:
+To try the device without running the API and dashboard, run the fake cloud:
 
 ```bash
 cd emulator

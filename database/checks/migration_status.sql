@@ -39,7 +39,27 @@ checks (migration, item, ok) AS (
         ('002', 'bin_events.bin_id ON DELETE CASCADE',
             EXISTS (SELECT 1 FROM fk WHERE tbl = 'bin_events' AND col = 'bin_id' AND on_delete = 'CASCADE')),
         ('002', 'bin_events.reading_id ON DELETE SET NULL',
-            EXISTS (SELECT 1 FROM fk WHERE tbl = 'bin_events' AND col = 'reading_id' AND on_delete = 'SET NULL'))
+            EXISTS (SELECT 1 FROM fk WHERE tbl = 'bin_events' AND col = 'reading_id' AND on_delete = 'SET NULL')),
+
+        ('003', 'devices.name, model, firmware_version, paired_at, last_seen_at',
+            (SELECT count(*) = 5 FROM information_schema.columns WHERE table_name = 'devices'
+             AND column_name IN ('name', 'model', 'firmware_version', 'paired_at', 'last_seen_at'))),
+        ('003', 'unique index on upper(devices.mac)',
+            to_regclass('public.devices_mac_key') IS NOT NULL),
+        ('003', 'unique index on device_apikeys.api_key_hash',
+            to_regclass('public.device_apikeys_hash_key') IS NOT NULL),
+        ('003', 'one open bin assignment per device',
+            to_regclass('public.device_bin_assn_open_key') IS NOT NULL),
+        ('003', 'bins.country_code',
+            EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'bins' AND column_name = 'country_code')),
+        ('003', 'setup_codes.id is the primary key',
+            EXISTS (SELECT 1 FROM information_schema.key_column_usage k
+                    JOIN information_schema.table_constraints t USING (constraint_name, table_name)
+                    WHERE t.table_name = 'setup_codes' AND t.constraint_type = 'PRIMARY KEY' AND k.column_name = 'id')),
+        ('003', 'unique index on live setup codes',
+            to_regclass('public.setup_codes_live_code_key') IS NOT NULL),
+        ('003', 'table pairing_failures exists',
+            to_regclass('public.pairing_failures') IS NOT NULL)
 )
 SELECT migration, item, CASE WHEN ok THEN 'applied' ELSE 'MISSING' END AS status
 FROM checks

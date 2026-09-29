@@ -1,15 +1,13 @@
-from fastapi import FastAPI, Depends
-from pydantic import BaseModel
 import datetime
-from sqlalchemy import text
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-from fastapi import Security, HTTPException
-from fastapi.security import APIKeyHeader
 import hashlib
 
+from fastapi import Depends, FastAPI, HTTPException, Security
+from fastapi.security import APIKeyHeader
+from pydantic import BaseModel
+from sqlalchemy import text
+
 from database import db_engine
-from routers import auth
+from routers import auth, bins, devices, pairing
 
 
 class Record(BaseModel):
@@ -22,6 +20,9 @@ class Record(BaseModel):
 
 app = FastAPI()
 app.include_router(auth.router)
+app.include_router(pairing.router)
+app.include_router(devices.router)
+app.include_router(bins.router)
 
 api_key_header = APIKeyHeader(name = "x-key")
 
@@ -30,8 +31,9 @@ def authentication(api_key: str = Security(api_key_header)):
     with db_engine.connect() as db:
         result = db.execute(text(
             """
-            SELECT device_id FROM device_apikeys
-            WHERE api_key_hash = :key_hash AND revoked_at IS NULL
+            SELECT k.device_id FROM device_apikeys k
+            JOIN devices d ON d.id = k.device_id
+            WHERE k.api_key_hash = :key_hash AND k.revoked_at IS NULL AND d.is_active
             """
         ),
         {
@@ -45,16 +47,20 @@ def authentication(api_key: str = Security(api_key_header)):
         return res.device_id
 
 @app.get("/")
-async def root():
+def root():
     return {"message": "Hello World"}
 
+# plain def: the database calls block, so FastAPI runs this in a thread pool
 @app.post("/records")
-async def send_records (readings: list[Record], device_id: str = Depends(authentication)):
-    with db_engine.connect() as db:
-        print(f"Database connection was successful: {db}")
+def send_records (readings: list[Record], device_id: str = Depends(authentication)):
+    # its own transaction, so it sticks even when the 409 below rolls the rest back:
+    # the dashboard can see the device is in contact before it's set up
+    with db_engine.begin() as db:
+        db.execute(text("UPDATE devices SET last_seen_at = now() WHERE id = :device_id"), {"device_id": device_id})
 
+    with db_engine.begin() as db:
         result = db.execute(text("""
-                                SELECT bin_id FROM device_bin_assn 
+                                SELECT bin_id FROM device_bin_assn
                                 WHERE device_id = :device_id AND unassigned_at is NULL
                               """),
                               {
@@ -63,27 +69,18 @@ async def send_records (readings: list[Record], device_id: str = Depends(authent
         res = result.first()
 
         if res is None:
-            raise HTTPException(status_code=409, detail="The device_id was received successfully after authentication, however this device_id does not exist in the device_bin_assn DB table.")
+            # paired, but not yet confirmed and given a bin in the dashboard;
+            # the device waits and checks back
+            raise HTTPException(status_code=409, detail="This device isn't set up yet. Finish setting it up in the dashboard.")
         else:
             bin_id = res.bin_id
 
-        for reading in readings:
+        if readings:
             db.execute(text("""
-                            INSERT INTO records (device_id, bin_id, timestamp, 
+                            INSERT INTO records (device_id, bin_id, timestamp,
                             temperature, moisture_percent, o2_percent, co2_percent, nh3_ratio)
                             VALUES (:device_id, :bin_id, :timestamp, :temperature,
                             :moisture_percent, :o2_percent, :co2_percent, :nh3_ratio)
                             """),
-                {
-                    "device_id":device_id,
-                    "bin_id":bin_id,
-                    "timestamp": reading.timestamp,
-                    "temperature": reading.temperature,
-                    "moisture_percent": reading.moisture_percent,
-                    "o2_percent": reading.o2_percent,
-                    "co2_percent":reading.co2_percent,
-                    "nh3_ratio": reading.nh3_ratio
-                })
-        db.commit()
+                [{"device_id": device_id, "bin_id": bin_id, **reading.model_dump()} for reading in readings])
     return readings
-
