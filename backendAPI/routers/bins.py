@@ -39,6 +39,11 @@ class Bin(BaseModel):
     location: str
     country_code: str | None
 
+class BinChange(BaseModel):
+    name: Name | None = None
+    location: Location | None = None
+    country_code: CountryCode | None = None
+
 
 BIN_COLUMNS = "id, name, location, country_code"
 
@@ -88,6 +93,31 @@ def get_specific_bin(bin_id: uuid.UUID, user = Depends(current_user)):
                 """
             ),
             {"id": bin_id, "user_id": user.id}
+        ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="The bin with the given ID does not exist.")
+    return Bin(**row._mapping)
+
+
+@router.patch("/{bin_id}", response_model=Bin)
+def change_bin(bin_id: uuid.UUID, body: BinChange, user = Depends(current_user)):
+    changed_fields = body.model_dump(exclude_none=True)
+    if changed_fields == {}:
+        raise HTTPException(status_code=422, detail="No fields are being changed.")
+    set_parts = []
+    for column in changed_fields:
+        set_parts.append(f"{column} = :{column}")
+    set_query = ", ".join(set_parts)
+    with db_engine.begin() as db:
+        row = db.execute(
+            text(
+            f"""
+            UPDATE bins
+            SET {set_query}
+            WHERE id = :id AND user_id = :user_id
+            RETURNING id, name, location, country_code
+            """),
+            {"id": bin_id, "user_id": user.id, **changed_fields}
         ).first()
     if row is None:
         raise HTTPException(status_code=404, detail="The bin with the given ID does not exist.")
