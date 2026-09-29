@@ -56,7 +56,7 @@ module.exports = {
       script: path.join(VENV_BIN, "uvicorn"),
       args: "main:app --host 127.0.0.1 --port 8000 --workers 2 --proxy-headers",
       interpreter: "none",
-      env: pick(["DATABASE_URL", "JWT_SECRET", "JWT_EXPIRY_HOURS"]),
+      env: pick(["DATABASE_URL", "JWT_SECRET", "JWT_EXPIRY_HOURS", "PAIRING_CODE_MINUTES"]),
       autorestart: true,
       max_restarts: 10,
       restart_delay: 3000,
