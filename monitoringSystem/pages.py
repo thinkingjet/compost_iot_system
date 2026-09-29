@@ -10,6 +10,7 @@ from components import (
     page_header,
     plot,
     section_header,
+    user_name,
 )
 from data import (
     BINS,
@@ -35,7 +36,7 @@ def _card_title(eyebrow, title, subtitle=None):
 
 # --------------------------------------------------------------- overview ---
 
-def dashboard_page():
+def dashboard_page(user):
     alerts = dmc.SimpleGrid(
         [
             alert_card("hot", "Temperature is running high", "Bin 1 · Turn compost within 2 hours", "High"),
@@ -47,7 +48,7 @@ def dashboard_page():
         [
             page_header(
                 "Monday · 8 September",
-                "Good morning, UNRAM",
+                f"Welcome back, {user_name(user)}",
                 "Here’s what’s happening across your compost system.",
                 linked_button("Pair a device", "/devices/add", icon_name="link"),
             ),
@@ -308,5 +309,199 @@ def new_bin_page():
         [
             page_header("Compost profile", "Create a compost bin", "Add the details used to group readings and calibrate insights."),
             dmc.Card(form, padding="lg"),
+        ]
+    )
+
+
+# ------------------------------------------------------------ public pages ---
+
+def _how_it_works_step(number, icon_name, title, text):
+    return dmc.Card(
+        [
+            dmc.Group([dmc.ThemeIcon(icon(icon_name, 20), variant="light", size="xl"), dmc.Text(f"Step {number}", size="xs", fw=700, tt="uppercase", c="dimmed")], gap="sm"),
+            dmc.Title(title, order=4, mt="md"),
+            dmc.Text(text, size="sm", c="dimmed", mt=4),
+        ],
+        padding="lg",
+    )
+
+
+def landing_page(signed_in):
+    """The public landing page. A placeholder hero for now: the global
+    statistics and the country map join it once the public API exists."""
+    if signed_in:
+        actions = [linked_button("Go to dashboard", "/dashboard", icon_name="arrow-right", size="md")]
+    else:
+        actions = [
+            linked_button("Create free account", "/register", size="md"),
+            linked_button("Sign in", "/login", "default", size="md"),
+        ]
+    hero = dmc.Stack(
+        [
+            dmc.Badge("Compost monitoring", variant="light", size="lg"),
+            dmc.Title("Better compost, backed by data.", order=1, ta="center", fz={"base": 34, "sm": 48}, lh=1.1),
+            dmc.Text(
+                "CompostIQ tracks temperature, moisture and oxygen inside your compost bins, "
+                "and tells you when to turn, water or leave the pile alone.",
+                c="dimmed",
+                size="lg",
+                ta="center",
+                maw=620,
+            ),
+            dmc.Group(actions, justify="center", mt="sm"),
+        ],
+        align="center",
+        gap="md",
+        py={"base": 48, "sm": 80},
+    )
+    steps = dmc.SimpleGrid(
+        [
+            _how_it_works_step(1, "plug", "Plug in", "Place a CompostIQ device in your bin and power it on."),
+            _how_it_works_step(2, "link", "Pair", "Enter the 6-digit code from the device to link it to your account."),
+            _how_it_works_step(3, "chart", "Watch", "Follow live readings, and get told when the pile needs attention."),
+        ],
+        cols={"base": 1, "sm": 3},
+    )
+    coming_soon = dmc.Alert(
+        "Global statistics and the map of bins by country will appear here.",
+        title="Community data is on its way",
+        icon=icon("map"),
+        variant="light",
+        color="gray",
+        mt="xl",
+    )
+    return dmc.Box([hero, dmc.Title("How it works", order=3, mb="sm"), steps, coming_soon])
+
+
+def not_found_page(signed_in):
+    home = linked_button("Go to dashboard", "/dashboard") if signed_in else linked_button("Back to home", "/")
+    return dmc.Stack(
+        [
+            dmc.Text("404", fz=64, fw=700, c="dimmed", lh=1),
+            dmc.Title("Page not found", order=2),
+            dmc.Text("That page doesn’t exist, or it has moved.", c="dimmed"),
+            home,
+        ],
+        align="center",
+        gap="sm",
+        py=80,
+    )
+
+
+def _auth_card(title, subtitle, fields):
+    card = dmc.Card(
+        dmc.Stack([dmc.Stack([dmc.Title(title, order=2), dmc.Text(subtitle, c="dimmed", size="sm")], gap=4), *fields], gap="md"),
+        padding="xl",
+        w="100%",
+        maw=440,
+    )
+    return dmc.Center(card, py={"base": "md", "sm": 48})
+
+
+def _form_alert(component_id):
+    # hidden until a callback has something to say
+    return dmc.Alert(id=component_id, color="red", variant="light", icon=icon("alert-circle"), hide=True)
+
+
+def login_page():
+    return _auth_card(
+        "Welcome back",
+        "Sign in to see your bins and devices.",
+        [
+            _form_alert("login-error"),
+            dmc.TextInput(id="login-email", label="Email", placeholder="you@example.com", name="email", autoComplete="email", leftSection=icon("mail", 16), value=""),
+            dmc.PasswordInput(id="login-password", label="Password", name="password", autoComplete="current-password", value=""),
+            button("Sign in", component_id="login-submit", fullWidth=True),
+            dmc.Text(["New to CompostIQ? ", dmc.Anchor("Create an account", href="/register", fw=600)], size="sm", c="dimmed", ta="center"),
+        ],
+    )
+
+
+def register_page():
+    return _auth_card(
+        "Create your account",
+        "Free, and ready for your first device in a minute.",
+        [
+            _form_alert("register-error"),
+            dmc.TextInput(id="register-email", label="Email", placeholder="you@example.com", name="email", autoComplete="email", leftSection=icon("mail", 16), required=True, value=""),
+            dmc.TextInput(id="register-name", label="Display name", description="Optional. Shown in the dashboard instead of your email.", name="name", autoComplete="name", value=""),
+            dmc.PasswordInput(id="register-password", label="Password", description="At least 8 characters.", name="new-password", autoComplete="new-password", required=True, value=""),
+            dmc.PasswordInput(id="register-confirm", label="Confirm password", name="confirm-password", autoComplete="new-password", required=True, value=""),
+            button("Create account", component_id="register-submit", fullWidth=True),
+            dmc.Text(["Already have an account? ", dmc.Anchor("Sign in", href="/login", fw=600)], size="sm", c="dimmed", ta="center"),
+        ],
+    )
+
+
+# ----------------------------------------------------------------- account ---
+
+def account_page(user):
+    profile = dmc.Card(
+        dmc.Stack(
+            [
+                _card_title("Profile", "Display name", "Shown in the dashboard. Leave it empty to use your email."),
+                dmc.TextInput(id="account-name", label="Display name", value=user.get("display_name") or "", name="name", autoComplete="name"),
+                dmc.TextInput(label="Email", value=user["email"], disabled=True),
+                dmc.Group(button("Save", component_id="account-name-save"), justify="flex-end"),
+            ]
+        ),
+        padding="lg",
+    )
+    password = dmc.Card(
+        dmc.Stack(
+            [
+                _card_title("Password", "Change password"),
+                dmc.PasswordInput(id="account-current-password", label="Current password", name="current-password", autoComplete="current-password", value=""),
+                dmc.PasswordInput(id="account-new-password", label="New password", description="At least 8 characters.", name="new-password", autoComplete="new-password", value=""),
+                dmc.PasswordInput(id="account-confirm-password", label="Confirm new password", name="confirm-password", autoComplete="new-password", value=""),
+                dmc.Group(button("Change password", component_id="account-password-save"), justify="flex-end"),
+            ]
+        ),
+        padding="lg",
+    )
+    danger = dmc.Card(
+        dmc.Group(
+            [
+                dmc.Stack(
+                    [
+                        dmc.Text("Danger zone", size="xs", fw=700, tt="uppercase", c="red"),
+                        dmc.Title("Delete account", order=4),
+                        dmc.Text("Deletes your bins and all their readings, and unpairs your devices. This cannot be undone.", size="sm", c="dimmed"),
+                    ],
+                    gap=2,
+                    flex=1,
+                    miw=220,
+                ),
+                button("Delete account", "outline", icon_name="trash", component_id="account-delete-open", color="red"),
+            ],
+            justify="space-between",
+        ),
+        padding="lg",
+        style={"borderColor": "var(--mantine-color-red-outline)"},
+    )
+    confirm = dmc.Modal(
+        dmc.Stack(
+            [
+                dmc.Text("This deletes your bins, devices and all their readings. It cannot be undone.", size="sm"),
+                dmc.PasswordInput(id="account-delete-password", label="Enter your password to confirm", name="password", autoComplete="current-password", value="", **{"data-autofocus": True}),
+                dmc.Group(
+                    [
+                        button("Cancel", "default", component_id="account-delete-cancel"),
+                        button("Delete my account", component_id="account-delete-confirm", color="red"),
+                    ],
+                    justify="flex-end",
+                ),
+            ]
+        ),
+        id="account-delete-modal",
+        title="Delete your account?",
+        centered=True,
+        opened=False,
+    )
+    return dmc.Box(
+        [
+            page_header("Account", "Your account", "Manage how you appear and how you sign in."),
+            dmc.Stack([dmc.SimpleGrid([profile, password], cols={"base": 1, "md": 2}), danger], gap="md"),
+            confirm,
         ]
     )
