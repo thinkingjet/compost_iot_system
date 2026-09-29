@@ -1,4 +1,8 @@
 import dash_mantine_components as dmc
+from dash import dcc
+
+import api_client
+from api_client import ApiError, ApiUnavailable, NotAuthenticated
 from components import (
     alert_card,
     bin_card,
@@ -8,6 +12,7 @@ from components import (
     linked_button,
     metric_card,
     page_header,
+    paired_device_card,
     plot,
     section_header,
     user_name,
@@ -76,17 +81,35 @@ def bins_page():
 
 
 def devices_page():
-    return dmc.Box(
-        [
-            page_header(
-                "Hardware",
-                "Devices",
-                "Connected sensors across all compost locations.",
-                linked_button("Pair a device", "/devices/add", icon_name="link"),
-            ),
-            dmc.SimpleGrid([device_card(item) for item in DEVICES], cols=CARD_GRID),
-        ]
+    header = page_header(
+        "Hardware",
+        "Devices",
+        "The CompostIQ devices paired with your account.",
+        linked_button("Pair a device", "/devices/add", icon_name="link"),
     )
+    try:
+        devices = api_client.list_devices()
+    except NotAuthenticated:
+        return dmc.Box([header, dmc.Alert("Your session has ended. Sign in again to see your devices.", color="yellow")])
+    except (ApiUnavailable, ApiError):
+        return dmc.Box([header, dmc.Alert("Can’t load your devices right now. Try again in a moment.", color="red")])
+
+    if not devices:
+        empty = dmc.Card(
+            dmc.Stack(
+                [
+                    dmc.ThemeIcon(icon("device", 26), size=52, radius="xl", variant="light"),
+                    dmc.Title("No devices yet", order=4),
+                    dmc.Text("Turn your CompostIQ device on, then pair it with your account.", c="dimmed", size="sm", ta="center"),
+                    linked_button("Pair a device", "/devices/add", icon_name="link", slot="empty"),
+                ],
+                align="center",
+                py="xl",
+            ),
+            padding="lg",
+        )
+        return dmc.Box([header, empty])
+    return dmc.Box([header, dmc.SimpleGrid([paired_device_card(device) for device in devices], cols=CARD_GRID)])
 
 
 # ----------------------------------------------------------- detail pages ---
@@ -242,32 +265,118 @@ def detail_page(kind, tab):
 
 # ------------------------------------------------------------ create flows ---
 
+def _hidden(hidden):
+    return {"display": "none"} if hidden else {}
+
+
 def add_device_page():
-    """Pairing wizard (UI only for now - wired to POST /pairing/claim later)."""
+    """Pairing: get a code here, enter it on the device, confirm, then name it and pick a bin.
+
+    The device swaps the code for its own API key (the dashboard never sees
+    the key). This page only issues the code, watches for it being used, and
+    sets the device up once the user confirms it's theirs.
+    """
     code_step = dmc.Stack(
         [
-            dmc.Text("Power on your CompostIQ device and open its local page. Start pairing there, then enter the 6-digit code it shows.", c="dimmed", size="sm"),
-            dmc.PinInput(id="pair-code", length=6, type="number", oneTimeCode=True, size="lg"),
-            dmc.Text("Codes expire after 10 minutes.", size="xs", c="dimmed"),
+            dmc.Stack(
+                [
+                    dmc.Text("Turn your CompostIQ device on and open its page. Then get a pairing code here and enter it on the device.", c="dimmed", size="sm"),
+                    button("Get pairing code", icon_name="link", component_id="pair-start"),
+                ],
+                id="pair-code-empty",
+                align="flex-start",
+                gap="md",
+            ),
+            dmc.Stack(
+                [
+                    dmc.Text("Enter this code on your device’s page:", size="sm"),
+                    dmc.Paper(
+                        dmc.Text(id="pair-code-value", ff="monospace", fz=44, fw=700, style={"letterSpacing": "0.3em"}),
+                        withBorder=True,
+                        px="xl",
+                        py="md",
+                        radius="md",
+                    ),
+                    dmc.Text(id="pair-code-expiry", size="xs", c="dimmed"),
+                    dmc.Group([dmc.Loader(size="sm", id="pair-code-loader"), dmc.Text(id="pair-code-status", size="sm")], gap="sm"),
+                    button("Get a new code", "default", component_id="pair-restart", size="xs"),
+                ],
+                id="pair-code-live",
+                align="flex-start",
+                gap="sm",
+                style=_hidden(True),
+            ),
         ],
-        align="flex-start",
-        gap="md",
+        py="md",
+    )
+    confirm_step = dmc.Stack(
+        [
+            dmc.Text("Check that this hardware ID matches the one on your device’s page before you confirm. If it doesn’t, someone else’s device used the code.", c="dimmed", size="sm"),
+            dmc.Paper(
+                dmc.SimpleGrid(
+                    [
+                        dmc.Stack([dmc.Text("Hardware ID", size="xs", c="dimmed"), dmc.Code(id="pair-device-hardware", fz="md")], gap=2),
+                        dmc.Stack([dmc.Text("Model", size="xs", c="dimmed"), dmc.Text(id="pair-device-model")], gap=2),
+                        dmc.Stack([dmc.Text("Firmware", size="xs", c="dimmed"), dmc.Text(id="pair-device-firmware")], gap=2),
+                    ],
+                    cols={"base": 1, "sm": 3},
+                ),
+                withBorder=True,
+                p="md",
+                radius="md",
+            ),
+            dmc.Group(
+                [
+                    button("That’s not my device", "subtle", component_id="pair-reject", color="red"),
+                    button("Confirm registration", icon_name="check", component_id="pair-confirm"),
+                ],
+                justify="flex-end",
+            ),
+        ],
         py="md",
     )
     details_step = dmc.Stack(
         [
-            dmc.TextInput(id="pair-device-name", label="Device name", placeholder="e.g. Outer Sensor", value=""),
-            dmc.Select(id="pair-bin", label="Compost bin", data=[{"value": b["id"], "label": b["name"]} for b in BINS], placeholder="Choose a bin", allowDeselect=False),
-            dmc.Anchor("Or create a new bin", href="/bins/new", size="sm"),
+            dmc.TextInput(id="pair-device-name", label="Device name", placeholder="e.g. Outer sensor", value="", required=True),
+            dmc.Stack(
+                [
+                    dmc.Text("Compost bin", size="sm", fw=500),
+                    dmc.SegmentedControl(
+                        id="pair-bin-mode",
+                        data=[{"value": "existing", "label": "An existing bin"}, {"value": "new", "label": "A new bin"}],
+                        value="existing",
+                    ),
+                ],
+                gap=4,
+            ),
+            dmc.Select(id="pair-bin", placeholder="Choose a bin", data=[], allowDeselect=False),
+            dmc.Stack(
+                [
+                    dmc.TextInput(id="pair-new-bin-name", label="Bin name", placeholder="e.g. Bin 1", value="", required=True),
+                    dmc.TextInput(id="pair-new-bin-location", label="Location", placeholder="e.g. UNRAM Engineering", value=""),
+                    dmc.Select(id="pair-new-bin-country", label="Country", data=COUNTRIES, searchable=True, required=True, placeholder="Choose a country"),
+                    dmc.Text("Only the country is shown publicly, as part of the anonymised global statistics.", size="xs", c="dimmed"),
+                ],
+                id="pair-new-bin",
+                style=_hidden(True),
+            ),
+            dmc.Group([button("Finish setup", component_id="pair-finish")], justify="flex-end"),
         ],
-        maw=420,
+        maw=480,
         py="md",
     )
     done_step = dmc.Stack(
         [
-            dmc.ThemeIcon(icon("check", 28), size=56, radius="xl", variant="light"),
-            dmc.Title("Waiting for your device…", order=4),
-            dmc.Text("Your device collects its key and starts sending readings. This page updates once the first reading arrives.", c="dimmed", size="sm"),
+            dmc.ThemeIcon(icon("check", 28), size=56, radius="xl", variant="light", id="pair-done-icon"),
+            dmc.Title("Waiting for the first reading…", order=4, id="pair-done-title"),
+            dmc.Text("Your device is set up. It checks in every few seconds, so its first reading should arrive shortly.",
+                     c="dimmed", size="sm", ta="center", id="pair-done-text"),
+            dmc.Group(
+                [
+                    button("Pair another device", "default", component_id="pair-another"),
+                    linked_button("Go to devices", "/devices", icon_name="arrow-right"),
+                ]
+            ),
         ],
         align="center",
         py="xl",
@@ -275,21 +384,23 @@ def add_device_page():
     stepper = dmc.Stepper(
         id="pair-stepper",
         active=0,
+        allowNextStepsSelect=False,
         children=[
-            dmc.StepperStep(label="Enter code", description="From the device", children=code_step),
-            dmc.StepperStep(label="Name & bin", description="Where it lives", children=details_step),
+            dmc.StepperStep(label="Pair", description="Get a code", children=code_step),
+            dmc.StepperStep(label="Confirm", description="Is it yours?", children=confirm_step),
+            dmc.StepperStep(label="Set up", description="Name & bin", children=details_step),
             dmc.StepperCompleted(children=done_step),
         ],
     )
-    actions = dmc.Group(
-        [button("Back", "default", component_id="pair-back"), button("Continue", component_id="pair-next")],
-        justify="flex-end",
-        mt="md",
-    )
     return dmc.Box(
         [
-            page_header("Connect hardware", "Pair a device", "Link a CompostIQ device to your account with its pairing code."),
-            dmc.Card([stepper, actions], padding="lg"),
+            # the code and the device's id - never the device's key, which only the device holds
+            dcc.Store(id="pair-state", data=None),
+            # never changes: fires resume_setup once when the page opens
+            dcc.Store(id="pair-init", data=0),
+            dcc.Interval(id="pair-poll", interval=2000, disabled=True),
+            page_header("Connect hardware", "Pair a device", "Link a CompostIQ device to your account."),
+            dmc.Card(stepper, padding="lg"),
         ]
     )
 

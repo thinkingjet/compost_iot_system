@@ -37,7 +37,9 @@ Open `http://127.0.0.1:8050`, and create an account or sign in as the developmen
 | `/login`, `/register` | public | a signed-in user is sent on to `/dashboard` |
 | `/dashboard` | private | overview |
 | `/bins`, `/bins/new`, `/bin/<tab>` | private | bins |
-| `/devices`, `/devices/add`, `/device/<tab>` | private | devices and the pairing wizard |
+| `/devices` | private | the user's devices from the API; unfinished ones are marked *Needs setup* |
+| `/devices/add` | private | the pairing wizard: get a code → the device redeems it → confirm its hardware ID → name and bin → wait for the first reading. `?device=<id>` resumes setup for a device paired earlier |
+| `/device/<tab>` | private | device detail (mock data) |
 | `/account` | private | display name, change password, delete account |
 | anything else | | 404 page |
 

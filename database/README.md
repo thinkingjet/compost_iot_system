@@ -18,6 +18,7 @@ PostgreSQL 16. Only the API (`backendAPI/`) connects to it. The dashboard and th
 |---|---|---|---|
 | 001 | `CompostIQ_PostgreSQL_schema_fix1.sql` | Creates the tables | no |
 | 002 | `migrations/002_users_auth.sql` | `users.created_at`, `users.display_name`; emails unique without regard to case; `ON DELETE` rules for account deletion | yes: lower-cases `users.email` |
+| 003 | `migrations/003_device_pairing.sql` | Device pairing: `devices.name`, `model`, `firmware_version`, `paired_at`, `last_seen_at`; one row per hardware ID; `bins.country_code`; `setup_codes` gets its own `id` primary key so a code number can be reused; new `pairing_failures` table; unique indexes on key hashes and on a device's open bin assignment | yes: gives existing `setup_codes` rows an `id`. Fails if two devices share a MAC (any case) or a device has two open bin assignments; fix those by hand first |
 
 Accounts that existed before 002 get the time the migration ran as their `created_at`, because their real sign-up time was never recorded.
 
@@ -152,7 +153,7 @@ This playbook was rehearsed on 2026-09-29 against a copy of the base schema hold
 
 ## Writing a new migration
 
-1. **Name it** with the next number: `migrations/003_pairing_country.sql`. Files run in name order.
+1. **Name it** with the next number: `migrations/004_what_it_does.sql`. Files run in name order.
 2. **Never edit a migration that has been applied anywhere.** Write a new one that changes what the old one did.
 3. **Wrap it in `BEGIN;` … `COMMIT;`** so it applies completely or not at all.
 4. **Make it safe to run twice**: `ADD COLUMN IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, `DROP CONSTRAINT IF EXISTS`. For anything without an `IF NOT EXISTS` form, check first inside a `DO $$ … $$` block (002 does this for foreign keys).

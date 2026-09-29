@@ -98,3 +98,42 @@ def change_password(current_password, new_password):
 
 def delete_me(password):
     return _request("DELETE", "/auth/me", json={"password": password})
+
+
+# ----------------------------------------------------------------- pairing ---
+# The device redeems the code itself (POST /pairing/redeem); the dashboard
+# issues it, watches for it being used, then sets the device up.
+
+def create_pairing_code():
+    return _request("POST", "/pairing/codes")
+
+
+def pairing_status(code):
+    return _request("GET", f"/pairing/codes/{code}")
+
+
+# ----------------------------------------------------------- devices, bins ---
+
+def list_devices():
+    return _request("GET", "/devices")
+
+
+def get_device(device_id):
+    return _request("GET", f"/devices/{device_id}")
+
+
+def set_up_device(device_id, name, bin_id):
+    return _request("POST", f"/devices/{device_id}/setup", json={"name": name, "bin_id": bin_id})
+
+
+def unpair_device(device_id):
+    return _request("DELETE", f"/devices/{device_id}")
+
+
+def list_bins():
+    return _request("GET", "/bins")
+
+
+def create_bin(name, country_code, location=""):
+    body = {"name": name, "location": location or "", "country_code": country_code}
+    return _request("POST", "/bins", json=body)

@@ -23,6 +23,8 @@ The apps must listen on `127.0.0.1` only, so the outside world reaches them thro
 
 Requests to `https://api.compostiq.win/auth/` (register, sign in, change password, delete account) are limited **per client IP** to 10 a minute, with a burst of 10. Over the limit, NGINX answers `429 Too Many Requests` and the request never reaches the API. The zone is `auth` in `compostiq.conf`; change `rate=` and `burst=` there.
 
+Requests to `https://api.compostiq.win/pairing/` (devices redeeming a pairing code) have the same limit in their own zone, `pairing`. The API also counts wrong codes per IP (10 in 15 minutes, then 429) whether or not NGINX is in front of it. For that count to see real client IPs, uvicorn needs `--proxy-headers`, which PM2 already passes.
+
 ```bash
 # expect ten 401s, then 429s
 for i in $(seq 1 15); do

@@ -18,9 +18,10 @@ INSERT INTO bins (id, location, user_id, name)
 VALUES ('00000000-0000-4000-8000-000000000101', 'Mataram, Lombok, Indonesia',
         '00000000-0000-4000-8000-000000000001', 'UNRAM Bin 1');
 
-INSERT INTO devices (id, mac, owner_id, is_active)
+-- paired, named and in a bin: set up, as if it had gone through pairing
+INSERT INTO devices (id, mac, owner_id, is_active, name, model, paired_at)
 VALUES ('00000000-0000-4000-8000-000000000201', '02:00:00:00:00:01',
-        '00000000-0000-4000-8000-000000000001', true);
+        '00000000-0000-4000-8000-000000000001', true, 'Seed sensor', 'ESP32-C3', now());
 
 INSERT INTO device_bin_assn (device_id, bin_id)
 VALUES ('00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000101');

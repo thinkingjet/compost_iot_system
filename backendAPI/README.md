@@ -22,6 +22,7 @@ uv run uvicorn main:app --reload --port 8000
 | `DATABASE_URL` | yes | the example matches `compose.yaml` |
 | `JWT_SECRET` | yes | at least 32 characters; the API will not start without it |
 | `JWT_EXPIRY_HOURS` | no | defaults to 8 |
+| `PAIRING_CODE_MINUTES` | no | how long a pairing code stays valid; defaults to 10 |
 
 `.env` is read from this folder, whatever directory the API is started from.
 
@@ -33,6 +34,9 @@ uv run uvicorn main:app --reload --port 8000
 |---|---|
 | `main.py` | the app, `POST /records` and the device `x-key` authentication |
 | `routers/auth.py` | user accounts and the `current_user` dependency |
+| `routers/pairing.py` | pairing codes: issue, check, and redeem one for a device key |
+| `routers/devices.py` | the user's devices: list, set up (name + bin), unpair |
+| `routers/bins.py` | the user's bins: list, create |
 | `database.py` | the one SQLAlchemy engine everything shares |
 | `config.py` | settings, from the environment or `.env` |
 
@@ -41,7 +45,8 @@ uv run uvicorn main:app --reload --port 8000
 | Who | Sends | Can reach |
 |---|---|---|
 | A device | `x-key: <api key>` | `POST /records` only |
-| A user | `Authorization: Bearer <JWT>` | `/auth/me`, `/auth/change-password` (and, later, their bins and devices) |
+| A device, before it has a key | a pairing code | `POST /pairing/redeem` only |
+| A user | `Authorization: Bearer <JWT>` | `/auth/*`, `/pairing/codes`, `/devices`, `/bins` (their own only) |
 
 They are separate dependencies. A user token cannot write readings, and a device key cannot reach a user endpoint.
 
@@ -67,10 +72,42 @@ A token response is `{access_token, token_type: "bearer", expires_at, user}` and
 - `DELETE /auth/me` runs in one transaction. The user's bins are deleted, along with their device assignments, readings and events. The user's devices are kept but unpaired (no owner, inactive, assignment closed) with their API keys revoked, so they can be paired again. Their setup codes are removed.
 - Requests to `/auth/` are rate-limited per IP by NGINX in production (429). See the [NGINX README](../deploy/nginx/README.md).
 
+## Pairing a device
+
+Pairing (the device gets its key) and setup (the user names it and picks a bin) are separate steps, so a pairing code carries nothing but the account.
+
+1. The dashboard asks for a code: `POST /pairing/codes`.
+2. The user types it into the device's own page, and the device calls `POST /pairing/redeem` with the code and its hardware ID (MAC). It gets its API key back, once. The device now belongs to the user but has no bin, so `/records` answers **409** and the device waits.
+3. The dashboard polls `GET /pairing/codes/{code}` until it says `redeemed`, and shows which hardware ID used the code. The user checks it matches the device.
+4. The user presses **Confirm registration**, and the dashboard calls `POST /devices/{id}/setup` with a name and a bin (creating the bin first with `POST /bins` if it's new). From then on `/records` accepts the device's readings.
+
+If the hardware ID doesn't match, "That's not my device" calls `DELETE /devices/{id}`, which revokes the new key at once. The full sequence diagram, and how the device behaves at each step, is in the [emulator README](../emulator/README.md#pairing).
+
+| Method | Path | Auth | Body | Success | Errors |
+|---|---|---|---|---|---|
+| POST | `/pairing/codes` | Bearer | | 201 `{code, expires_at}` | 401 |
+| GET | `/pairing/codes/{code}` | Bearer | | 200 `{code, status, expires_at, device}` | 401 · 404 (not this user's code) |
+| POST | `/pairing/redeem` | the code | `{code, device_uid, model?, firmware_version?}` | 201 `{device_id, api_key}` | 404 unknown · 409 already used · 410 expired · 422 · 429 too many wrong codes |
+| GET | `/devices` | Bearer | | 200 list of devices | 401 |
+| GET | `/devices/{id}` | Bearer | | 200 device | 401 · 404 |
+| POST | `/devices/{id}/setup` | Bearer | `{name, bin_id}` | 200 device | 401 · 404 device or bin not the user's · 422 |
+| DELETE | `/devices/{id}` | Bearer | | 204 | 401 · 404 |
+| GET | `/bins` | Bearer | | 200 list of bins | 401 |
+| POST | `/bins` | Bearer | `{name, location?, country_code}` | 201 bin | 401 · 422 |
+
+`status` is `pending`, `expired` or `redeemed`; once redeemed, `device` is the device that used it. A device is `{id, hardware_id, name, model, firmware_version, paired_at, last_seen_at, bin: {id, name} | null, set_up}`, where `set_up` means it has a name and a bin, so its readings are accepted.
+
+- **Codes** are 6 digits (leading zeros kept), valid for `PAIRING_CODE_MINUTES`, and used once. Only live codes have to be unique, so a number can come round again later. A user can hold up to 5 live codes; asking for more drops the oldest.
+- **Guessing is limited.** Every wrong, used or expired code sent to `/pairing/redeem` is counted per client IP in `pairing_failures`. After 10 in 15 minutes that IP gets 429 until the oldest fall out of the window. The count lives in the database because PM2 runs two API workers. NGINX also rate-limits `/pairing/` in production.
+- **Keys** are 64 hex characters from `secrets`. Only their SHA-256 hash is stored, as `/records` expects, and the key is only ever in the redeem response.
+- **Pairing hardware again** (after a factory reset, or passing the device on) reuses its `devices` row. Its old keys are revoked, and it leaves its bin and loses its name, so the new owner sets it up from scratch.
+- **Someone else's device or bin** is always a 404, never a 403.
+- `/records` also rejects a key whose device is inactive (unpaired), and records `last_seen_at` on every call, including the 409s before setup, so the dashboard can see a device is in contact.
+
 ## Tests
 
 ```bash
 cd backendAPI && uv run pytest
 ```
 
-These are integration tests against the Compose database; if it is not running they are skipped with a hint. The auth tests register their own users (`pytest-…@example.com`) and remove everything they create.
+These are integration tests against the Compose database; if it is not running they are skipped with a hint. The auth tests register their own users (`pytest-…@example.com`) and remove everything they create. The pairing tests (`tests/test_pairing.py`) cover every step above, including expired, reused and guessed codes, another user's device or bin, re-pairing and unpairing, and remove their devices (`02:00:00:00:FD:…`) afterwards.

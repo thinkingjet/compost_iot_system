@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from itertools import count
 
 import dash_mantine_components as dmc
@@ -187,6 +188,52 @@ def device_card(device):
         padding="md",
     )
     return _card_link(card, "/device/live")
+
+
+# a device that checked in this recently counts as online
+ONLINE_WITHIN = timedelta(minutes=5)
+
+
+def time_ago(iso):
+    """'12 s ago', '5 min ago', '3 h ago' or a date, from an ISO timestamp."""
+    seconds = max(0, int((datetime.now(timezone.utc) - datetime.fromisoformat(iso)).total_seconds()))
+    if seconds < 60:
+        return f"{seconds} s ago"
+    if seconds < 3600:
+        return f"{seconds // 60} min ago"
+    if seconds < 86400:
+        return f"{seconds // 3600} h ago"
+    return datetime.fromisoformat(iso).strftime("%d %b %Y")
+
+
+def _device_status(device):
+    if not device["set_up"]:
+        return dmc.Badge("Needs setup", color="yellow", variant="light", size="sm")
+    seen = device.get("last_seen_at")
+    if seen and datetime.now(timezone.utc) - datetime.fromisoformat(seen) < ONLINE_WITHIN:
+        return online_badge()
+    return dmc.Badge("Offline", color="gray", variant="dot", size="sm")
+
+
+def paired_device_card(device):
+    """A device from GET /devices."""
+    where = device["bin"]["name"] if device["bin"] else "Not in a bin yet"
+    seen = device.get("last_seen_at")
+    footer = (
+        linked_button("Finish setup", f"/devices/add?device={device['id']}", size="xs", slot=device["id"])
+        if not device["set_up"]
+        else dmc.Text(f"Last seen {time_ago(seen)}" if seen else "No readings yet", size="sm", c="dimmed")
+    )
+    return dmc.Card(
+        [
+            dmc.Group([dmc.ThemeIcon(icon("device", 18), variant="light", size="lg"), _device_status(device)], justify="space-between"),
+            dmc.Text(device["name"] or "New device", fw=600, size="lg", mt="md"),
+            dmc.Text(f"{where} · {device['model'] or 'Unknown model'}", size="sm", c="dimmed"),
+            dmc.Code(device["hardware_id"], mt="xs", w="fit-content"),
+            dmc.Group(footer, mt="md"),
+        ],
+        padding="md",
+    )
 
 
 def alert_card(kind, title, detail, priority):

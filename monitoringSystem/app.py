@@ -12,9 +12,10 @@ import logging
 import re
 import secrets
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlencode
 
+import api_client
 import auth
 import dash_mantine_components as dmc
 from api_client import ApiError, ApiUnavailable, NotAuthenticated
@@ -266,8 +267,10 @@ def navigate(_clicks):
     # buttons fire with n_clicks=0 when a page first renders them - ignore that
     if not ctx.triggered_id or not ctx.triggered[0]["value"]:
         return no_update, no_update
-    # the empty search drops a left-over ?next= from the sign-in page
-    return ctx.triggered_id["href"], ""
+    # a link may carry a query (/devices/add?device=...); without one, the
+    # empty search drops a left-over ?next= from the sign-in page
+    pathname, _, query = ctx.triggered_id["href"].partition("?")
+    return pathname, f"?{query}" if query else ""
 
 
 @callback(
@@ -595,35 +598,300 @@ def delete_account(n_clicks, enter, password, pathname):
 
 
 # ---------------------------------------------------------- pairing wizard ---
+#
+# 0 Pair     the dashboard issues a code; the page polls until the device uses it
+# 1 Confirm  shows the hardware ID that used it; "not mine" unpairs it again
+# 2 Set up   name + an existing or new bin
+# 3 Done     polls until the device checks in after setup
+#
+# pair-state holds {code, device_id, seen_before}: nothing secret. The
+# device's API key goes straight from the API to the device and never
+# passes through the dashboard.
+
+HIDDEN = {"display": "none"}
+SHOWN = {}
+PAIR_PAGE = "/devices/add"
+
+PAIR_OUTPUTS = {
+    "active": Output("pair-stepper", "active", allow_duplicate=True),
+    "state": Output("pair-state", "data", allow_duplicate=True),
+    "poll_off": Output("pair-poll", "disabled", allow_duplicate=True),
+    "empty_style": Output("pair-code-empty", "style", allow_duplicate=True),
+    "live_style": Output("pair-code-live", "style", allow_duplicate=True),
+    "code": Output("pair-code-value", "children", allow_duplicate=True),
+    "expiry": Output("pair-code-expiry", "children", allow_duplicate=True),
+    "status": Output("pair-code-status", "children", allow_duplicate=True),
+    "loader_style": Output("pair-code-loader", "style", allow_duplicate=True),
+    "hardware": Output("pair-device-hardware", "children", allow_duplicate=True),
+    "model": Output("pair-device-model", "children", allow_duplicate=True),
+    "firmware": Output("pair-device-firmware", "children", allow_duplicate=True),
+    "name": Output("pair-device-name", "value", allow_duplicate=True),
+    "done_title": Output("pair-done-title", "children", allow_duplicate=True),
+    "done_text": Output("pair-done-text", "children", allow_duplicate=True),
+    "redirect": Output("redirect", "data", allow_duplicate=True),
+    "notify": Output("notify", "sendNotifications", allow_duplicate=True),
+}
+
+
+def pair_update(**values):
+    return {key: values.get(key, no_update) for key in PAIR_OUTPUTS}
+
+
+def pair_signed_out():
+    redirect, note = _session_ended(PAIR_PAGE)
+    return pair_update(redirect=redirect, notify=note, poll_off=True)
+
+
+def _minutes_left(expires_at):
+    left = datetime.fromisoformat(expires_at) - datetime.now(timezone.utc)
+    minutes = max(0, int(left.total_seconds() // 60))
+    return "Expires in less than a minute." if minutes < 1 else f"Expires in {minutes} min."
+
+
+def _show_device(device, state):
+    """Move to the Confirm step for this device."""
+    return pair_update(
+        active=1,
+        state={**(state or {}), "device_id": device["id"]},
+        poll_off=True,
+        hardware=device["hardware_id"],
+        model=device["model"] or "Not reported",
+        firmware=device["firmware_version"] or "Not reported",
+    )
+
+
+def _back_to_start(note=no_update):
+    return pair_update(
+        active=0, state=None, poll_off=True, empty_style=SHOWN, live_style=HIDDEN, notify=note,
+    )
+
 
 @callback(
-    Output("pair-stepper", "active"),
-    Output("pair-next", "disabled"),
-    Output("pair-back", "disabled"),
-    Output("notify", "sendNotifications", allow_duplicate=True),
-    Input("pair-next", "n_clicks"),
-    Input("pair-back", "n_clicks"),
-    State("pair-stepper", "active"),
-    State("pair-code", "value"),
-    State("pair-device-name", "value"),
-    State("pair-bin", "value"),
+    output=PAIR_OUTPUTS,
+    inputs={"clicks": [Input("pair-start", "n_clicks"), Input("pair-restart", "n_clicks"), Input("pair-another", "n_clicks")]},
     prevent_initial_call=True,
 )
-def step_pairing(_next, _back, active, code, name, bin_id):
-    active = active or 0
-    if ctx.triggered_id == "pair-back":
-        active = max(active - 1, 0)
-        return active, False, active == 0, no_update
+def start_pairing(clicks):
+    if not _clicked():
+        return pair_update()
+    try:
+        code = api_client.create_pairing_code()
+    except NotAuthenticated:
+        return pair_signed_out()
+    except (ApiError, ApiUnavailable) as error:
+        return pair_update(notify=toast(_api_problem(error), "red"))
+    return pair_update(
+        active=0,
+        state={"code": code["code"]},
+        poll_off=False,
+        empty_style=HIDDEN,
+        live_style=SHOWN,
+        code=code["code"],
+        expiry=_minutes_left(code["expires_at"]),
+        status="Waiting for your device to use the code…",
+        loader_style=SHOWN,
+        name="",
+    )
 
-    if active == 0 and len(str(code or "")) != 6:
-        return no_update, no_update, no_update, toast("Enter the full 6-digit code shown on your device.", "red")
-    if active == 1 and not (name and bin_id):
-        return no_update, no_update, no_update, toast("Give the device a name and choose a bin.", "red")
 
-    active = min(active + 1, 2)
-    done = active == 2
-    note = toast("Pairing isn't connected to the API yet. This step is a preview.", "yellow", "Preview") if done else no_update
-    return active, done, done, note
+@callback(
+    output=PAIR_OUTPUTS,
+    inputs={"_ticks": Input("pair-poll", "n_intervals")},
+    state={"state": State("pair-state", "data"), "active": State("pair-stepper", "active")},
+    prevent_initial_call=True,
+)
+def poll_pairing(_ticks, state, active):
+    if not state:
+        return pair_update(poll_off=True)
+    try:
+        if active == 3:
+            return _check_first_reading(state)
+        status = api_client.pairing_status(state["code"])
+    except NotAuthenticated:
+        return pair_signed_out()
+    except ApiUnavailable:
+        return pair_update(status="Can’t reach CompostIQ right now. Still trying…")
+    except ApiError:
+        return pair_update(poll_off=True, status="This code is no longer valid. Get a new code.", loader_style=HIDDEN)
+
+    if status["status"] == "pending":
+        return pair_update(expiry=_minutes_left(status["expires_at"]))
+    if status["status"] == "expired":
+        return pair_update(poll_off=True, expiry="", loader_style=HIDDEN,
+                           status="This code has expired. Get a new code to try again.")
+    if status["device"] is None:
+        # used, but the device has since been unpaired or paired elsewhere
+        return pair_update(poll_off=True, loader_style=HIDDEN,
+                           status="The code was used, but that device isn’t paired with your account any more.")
+    return _show_device(status["device"], state)
+
+
+def _check_first_reading(state):
+    device = api_client.get_device(state["device_id"])
+    seen = device.get("last_seen_at")
+    before = state.get("seen_before")
+    if not seen or (before and datetime.fromisoformat(seen) <= datetime.fromisoformat(before)):
+        return pair_update()
+    return pair_update(
+        poll_off=True,
+        done_title="Your device is online",
+        done_text=f"{device['name']} is sending readings to {device['bin']['name']}.",
+    )
+
+
+@callback(
+    output=PAIR_OUTPUTS,
+    inputs={"_ready": Input("pair-init", "data")},
+    state={"search": State("url", "search")},
+    prevent_initial_call="initial_duplicate",
+)
+def resume_setup(_ready, search):
+    """/devices/add?device=<id>: finish setting up a device paired earlier."""
+    device_id = parse_qs((search or "").lstrip("?")).get("device", [""])[0]
+    if not device_id:
+        return pair_update()
+    try:
+        device = api_client.get_device(device_id)
+    except NotAuthenticated:
+        return pair_signed_out()
+    except (ApiError, ApiUnavailable) as error:
+        message = "That device isn’t paired with your account." if isinstance(error, ApiError) and error.status in (404, 422) else _api_problem(error)
+        return pair_update(notify=toast(message, "red"))
+    if device["set_up"]:
+        return pair_update(notify=toast(f"{device['name']} is already set up."))
+    return _show_device(device, None)
+
+
+@callback(
+    output=PAIR_OUTPUTS,
+    inputs={"_clicks": Input("pair-reject", "n_clicks")},
+    state={"state": State("pair-state", "data")},
+    prevent_initial_call=True,
+)
+def reject_device(_clicks, state):
+    """Not the user's device: unpair it at once, so its new key stops working."""
+    if not _clicked() or not state:
+        return pair_update()
+    try:
+        api_client.unpair_device(state["device_id"])
+    except NotAuthenticated:
+        return pair_signed_out()
+    except ApiError as error:
+        if error.status != 404:
+            return pair_update(notify=toast(_api_problem(error), "red"))
+    except ApiUnavailable as error:
+        return pair_update(notify=toast(_api_problem(error), "red"))
+    return _back_to_start(toast("That device was unpaired. Get a new code to pair yours.", "yellow"))
+
+
+@callback(
+    Output("pair-stepper", "active", allow_duplicate=True),
+    Output("pair-bin", "data"),
+    Output("pair-bin", "value"),
+    Output("pair-bin-mode", "value"),
+    Output("redirect", "data", allow_duplicate=True),
+    Output("notify", "sendNotifications", allow_duplicate=True),
+    Input("pair-confirm", "n_clicks"),
+    running=[(Output("pair-confirm", "loading"), True, False)],
+    prevent_initial_call=True,
+)
+def confirm_registration(_clicks):
+    if not _clicked():
+        return (no_update,) * 6
+    try:
+        bins = api_client.list_bins()
+    except NotAuthenticated:
+        return no_update, no_update, no_update, no_update, *_session_ended(PAIR_PAGE)
+    except (ApiError, ApiUnavailable) as error:
+        return no_update, no_update, no_update, no_update, no_update, toast(_api_problem(error), "red")
+    options = [{"value": b["id"], "label": b["name"] or "Unnamed bin"} for b in bins]
+    first = options[0]["value"] if len(options) == 1 else None
+    return 2, options, first, "existing" if options else "new", no_update, no_update
+
+
+# an error clears as soon as the field is changed, rather than on the next submit
+for _field in ("pair-device-name", "pair-bin", "pair-new-bin-name", "pair-new-bin-country"):
+    clientside_callback(
+        "function () { return null; }",
+        Output(_field, "error", allow_duplicate=True),
+        Input(_field, "value"),
+        prevent_initial_call=True,
+    )
+
+
+@callback(
+    Output("pair-bin", "style"),
+    Output("pair-new-bin", "style"),
+    Input("pair-bin-mode", "value"),
+)
+def show_bin_choice(mode):
+    return (HIDDEN, SHOWN) if mode == "new" else (SHOWN, HIDDEN)
+
+
+@callback(
+    output={
+        **PAIR_OUTPUTS,
+        "name_error": Output("pair-device-name", "error"),
+        "bin_error": Output("pair-bin", "error"),
+        "new_name_error": Output("pair-new-bin-name", "error"),
+        "country_error": Output("pair-new-bin-country", "error"),
+    },
+    inputs={"_clicks": Input("pair-finish", "n_clicks")},
+    state={
+        "state": State("pair-state", "data"),
+        "name": State("pair-device-name", "value"),
+        "mode": State("pair-bin-mode", "value"),
+        "bin_id": State("pair-bin", "value"),
+        "new_name": State("pair-new-bin-name", "value"),
+        "new_location": State("pair-new-bin-location", "value"),
+        "country": State("pair-new-bin-country", "value"),
+    },
+    running=[(Output("pair-finish", "loading"), True, False)],
+    prevent_initial_call=True,
+)
+def finish_setup(_clicks, state, name, mode, bin_id, new_name, new_location, country):
+    errors = {"name_error": None, "bin_error": None, "new_name_error": None, "country_error": None}
+
+    def answer(**values):
+        return {**pair_update(**values), **errors}
+
+    if not _clicked() or not state:
+        return {**pair_update(), **{key: no_update for key in errors}}
+
+    name, new_name = (name or "").strip(), (new_name or "").strip()
+    if not name:
+        errors["name_error"] = "Give the device a name."
+    elif len(name) > MAX_NAME:
+        errors["name_error"] = f"Keep it to {MAX_NAME} characters or fewer."
+    if mode == "new":
+        if not new_name:
+            errors["new_name_error"] = "Give the bin a name."
+        if not country:
+            errors["country_error"] = "Choose a country."
+    elif not bin_id:
+        errors["bin_error"] = "Choose a bin."
+    if any(errors.values()):
+        return answer()
+
+    try:
+        if mode == "new":
+            bin_id = api_client.create_bin(new_name, country, new_location)["id"]
+        device = api_client.set_up_device(state["device_id"], name, bin_id)
+    except NotAuthenticated:
+        return {**pair_signed_out(), **errors}
+    except (ApiError, ApiUnavailable) as error:
+        if isinstance(error, ApiError) and error.status == 404:
+            return answer(notify=toast("That device or bin isn’t on your account any more.", "red"))
+        return answer(notify=toast(_api_problem(error), "red"))
+
+    return answer(
+        active=3,
+        state={**state, "seen_before": device.get("last_seen_at")},
+        poll_off=False,
+        done_title="Waiting for the first reading…",
+        done_text=f"{device['name']} is set up in {device['bin']['name']}. It checks in every few seconds, so its first reading should arrive shortly.",
+        notify=toast(f"{device['name']} is set up.", title="Device registered"),
+    )
 
 
 # ---------------------------------------------------------------- new bin ---
