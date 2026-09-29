@@ -1,14 +1,15 @@
 from fastapi import FastAPI, Depends
 from pydantic import BaseModel
 import datetime
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from fastapi import Security, HTTPException
 from fastapi.security import APIKeyHeader
 import hashlib
 
-from config import settings
+from database import db_engine
+from routers import auth
 
 
 class Record(BaseModel):
@@ -20,8 +21,7 @@ class Record(BaseModel):
     nh3_ratio: float
 
 app = FastAPI()
-
-db_engine = create_engine(settings.database_url)
+app.include_router(auth.router)
 
 api_key_header = APIKeyHeader(name = "x-key")
 

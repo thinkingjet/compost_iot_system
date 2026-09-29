@@ -19,6 +19,24 @@ sudo certbot renew --dry-run                        # confirm auto-renewal works
 
 The apps must listen on `127.0.0.1` only, so the outside world reaches them through NGINX.
 
+## Rate limiting
+
+Requests to `https://api.compostiq.win/auth/` (register, sign in, change password, delete account) are limited **per client IP** to 10 a minute, with a burst of 10. Over the limit, NGINX answers `429 Too Many Requests` and the request never reaches the API. The zone is `auth` in `compostiq.conf`; change `rate=` and `burst=` there.
+
+```bash
+# expect ten 401s, then 429s
+for i in $(seq 1 15); do
+  curl -s -o /dev/null -w "%{http_code}\n" -X POST https://api.compostiq.win/auth/login \
+    -H 'content-type: application/json' -d '{"email":"nobody@example.com","password":"wrong-password"}'
+done
+```
+
+Things to know:
+
+- **The dashboard must call the API on the loopback address** (`API_URL=http://127.0.0.1:8000` in `.env`). Its calls are made by the server, so through NGINX every user would share the VM's IP and one rate limit.
+- That also means this limit only covers clients that call the API directly. Sign-in attempts made through the dashboard's own pages are not limited yet.
+- If Cloudflare's proxy is on (orange cloud), NGINX sees Cloudflare's IP, not the visitor's. Restore the real address with `set_real_ip_from` + `real_ip_header CF-Connecting-IP` before relying on the limit.
+
 ## Fresh reinstall
 
 Use this to wipe NGINX and start clean. Let's Encrypt certificates live in `/etc/letsencrypt`, which this does not touch.

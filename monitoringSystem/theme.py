@@ -110,6 +110,13 @@ _ICONS = {
     "check": "tabler:check",
     "sun": "tabler:sun",
     "moon": "tabler:moon-stars",
+    "mail": "tabler:mail",
+    "logout": "tabler:logout",
+    "alert-circle": "tabler:alert-circle",
+    "trash": "tabler:trash",
+    "plug": "tabler:plug",
+    "chart": "tabler:chart-line",
+    "map": "tabler:map-2",
 }
 
 

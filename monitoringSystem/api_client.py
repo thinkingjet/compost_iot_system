@@ -1,0 +1,100 @@
+"""
+The only module that talks to the CompostIQ API.
+
+Calls are made from the server, inside Dash callbacks - the browser never
+sees the API or the token. The signed-in user's token is read from the Flask
+session and sent as a Bearer header.
+
+Three things can go wrong, and callers handle each differently:
+  NotAuthenticated  the token is missing, expired or no longer valid; the
+                    session has already been cleared
+  ApiUnavailable    the API could not be reached, or it failed (5xx)
+  ApiError          the API refused the request (409, 422, a wrong password...)
+"""
+import requests
+from flask import session
+
+from settings import API_URL
+
+# (connect, read) in seconds - a slow API must not hang a gunicorn worker
+TIMEOUT = (3.05, 10)
+
+
+class NotAuthenticated(Exception):
+    pass
+
+
+class ApiUnavailable(Exception):
+    pass
+
+
+class ApiError(Exception):
+    def __init__(self, status, detail):
+        super().__init__(f"{status}: {detail}")
+        self.status = status
+        self.detail = detail
+
+    @property
+    def fields(self):
+        """The request fields a 422 complained about, e.g. {"email"}."""
+        if not isinstance(self.detail, list):
+            return set()
+        return {str(error["loc"][-1]) for error in self.detail if error.get("loc")}
+
+
+def _request(method, path, json=None, signed_in=True):
+    headers = {}
+    if signed_in:
+        token = session.get("token")
+        if not token:
+            raise NotAuthenticated()
+        headers["Authorization"] = f"Bearer {token}"
+
+    try:
+        response = requests.request(method, f"{API_URL}{path}", json=json, headers=headers, timeout=TIMEOUT)
+    except requests.RequestException as error:
+        raise ApiUnavailable(str(error)) from error
+
+    if response.status_code >= 500:
+        raise ApiUnavailable(f"{response.status_code} from {path}")
+    # The API marks a rejected token with a WWW-Authenticate header. A wrong
+    # password is also a 401 but has no header, and must not end the session.
+    if response.status_code == 401 and signed_in and "bearer" in response.headers.get("WWW-Authenticate", "").lower():
+        session.clear()
+        raise NotAuthenticated()
+    if response.status_code >= 400:
+        try:
+            detail = response.json().get("detail")
+        except ValueError:
+            detail = response.text
+        raise ApiError(response.status_code, detail)
+
+    return response.json() if response.content else None
+
+
+# -------------------------------------------------------------------- auth ---
+
+def register(email, password, display_name=None):
+    body = {"email": email, "password": password, "display_name": display_name}
+    return _request("POST", "/auth/register", json=body, signed_in=False)
+
+
+def login(email, password):
+    return _request("POST", "/auth/login", json={"email": email, "password": password}, signed_in=False)
+
+
+def get_me():
+    return _request("GET", "/auth/me")
+
+
+def update_me(display_name):
+    return _request("PATCH", "/auth/me", json={"display_name": display_name})
+
+
+def change_password(current_password, new_password):
+    body = {"current_password": current_password, "new_password": new_password}
+    return _request("POST", "/auth/change-password", json=body)
+
+
+def delete_me(password):
+    return _request("DELETE", "/auth/me", json={"password": password})

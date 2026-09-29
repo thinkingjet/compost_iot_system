@@ -30,6 +30,20 @@ sudo -u postgres psql -d compostiq -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
 psql "postgresql://compostiq:CHANGE_ME@127.0.0.1:5432/compostiq" -f database/CompostIQ_PostgreSQL_schema_fix1.sql
 ```
 
+Then apply the migrations in `database/migrations/`, in name order. They are safe to run again, so after a `git pull` that brings a new one, run them all. On a database that already holds data, follow the full playbook in [`database/README.md`](../../database/README.md) instead: it adds the backup, the checks and the rollback.
+
+```bash
+for f in database/migrations/*.sql; do
+  psql "postgresql://compostiq:CHANGE_ME@127.0.0.1:5432/compostiq" -v ON_ERROR_STOP=1 -f "$f"
+done
+```
+
+| Migration | What it adds |
+|---|---|
+| `002_users_auth.sql` | `users.created_at` and `users.display_name`, case-insensitive unique emails, and the `ON DELETE` rules that account deletion relies on |
+
+Do **not** load `database/seed_dev.sql` on the VM. It creates a user with a published, development-only password.
+
 Ubuntu's PostgreSQL only listens on localhost by default. Keep it that way, and do not open port 5432 in the firewall.
 
 ## 3. App code and Python environment
@@ -38,9 +52,17 @@ Ubuntu's PostgreSQL only listens on localhost by default. Keep it that way, and 
 git clone <repo-url> ~/compost_iot_system
 cd ~/compost_iot_system
 uv sync --all-packages  # --all-packages also installs the API's own dependencies (backendAPI/pyproject.toml)
-cp .env.example .env    # then edit .env and set the real DATABASE_URL password
+cp .env.example .env    # then edit .env: see the table below
 chmod 600 .env
 ```
+
+| Variable | Used by | Notes |
+|---|---|---|
+| `DATABASE_URL` | API | the real database password |
+| `JWT_SECRET` | API | signs sign-in tokens. Required, at least 32 characters: `python3 -c "import secrets; print(secrets.token_urlsafe(48))"`. Changing it signs everyone out |
+| `JWT_EXPIRY_HOURS` | API | optional, defaults to 8 |
+| `API_URL` | Dashboard | `http://127.0.0.1:8000`. Keep it on the loopback address, so the dashboard's calls skip NGINX and its rate limit |
+| `DASHBOARD_SECRET_KEY` | Dashboard | signs the session cookie. Required: the dashboard refuses to start without it. Use a different value from `JWT_SECRET` |
 
 `ecosystem.config.js` reads `.env` from the repo root and gives each app only the variables it needs. The dashboard never receives `DATABASE_URL`. When an app starts reading a new variable, add its name to that app's `pick([...])` list.
 
@@ -75,7 +97,7 @@ pm2 restart compostiq-dashboard
 pm2 reload deploy/pm2/ecosystem.config.js --update-env   # after editing .env
 ```
 
-To deploy new code, run `git pull` and `uv sync --all-packages`, then restart both apps.
+To deploy new code, run `git pull` and `uv sync --all-packages`, apply any new migrations (section 2), then restart both apps.
 
 ## Moving an existing VM off the simulator (one-off)
 
