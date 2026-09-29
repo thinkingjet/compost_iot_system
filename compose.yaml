@@ -15,7 +15,7 @@ services:
     image: postgres:16
     environment:
       POSTGRES_USER: compostiq
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-compostiq_dev}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: compostiq
     ports:
       - "127.0.0.1:5432:5432"
