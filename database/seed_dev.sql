@@ -1,16 +1,18 @@
--- Minimal development seed, loaded by compose.yaml after the schema.
--- Fixed UUIDs so tests and local tools can refer to these rows.
+-- Minimal development seed, loaded by compose.yaml after the schema and the
+-- migrations. Fixed UUIDs so tests and local tools can refer to these rows.
 --
--- No password hash and no device API key are seeded:
---   * users.password_hash is a placeholder until POST /auth/register exists
---     (the API will hash with argon2, not SHA-256)
---   * device keys are created per test / per developer, never committed
+-- DEV ONLY - never load this file into the VM's database.
+--   * the dev user signs in with  dev@compostiq.local / compostiq-dev
+--     (an argon2id hash of that documented, local-only password)
+--   * no device API key is seeded: keys are created per test / per developer,
+--     never committed
 --
 -- Replaces database/dummy_records.sql for local use (that file re-creates the
 -- records table and cannot be loaded after the schema).
 
-INSERT INTO users (id, email, password_hash)
-VALUES ('00000000-0000-4000-8000-000000000001', 'dev@compostiq.local', '!placeholder-no-login');
+INSERT INTO users (id, email, display_name, password_hash)
+VALUES ('00000000-0000-4000-8000-000000000001', 'dev@compostiq.local', 'Dev User',
+        '$argon2id$v=19$m=65536,t=3,p=4$14twJeAF446ckEBLWZ8P0w$hda8l/9WrH/mMKsHT1aUE08eFUUyBgyfSY72ugcxlU8');
 
 INSERT INTO bins (id, location, user_id, name)
 VALUES ('00000000-0000-4000-8000-000000000101', 'Mataram, Lombok, Indonesia',

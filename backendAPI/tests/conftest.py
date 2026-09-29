@@ -26,6 +26,12 @@ SEED_USER_ID = "00000000-0000-4000-8000-000000000001"
 TEST_EPOCH = "2000-01-01T00:00:00+00:00"
 TEST_CUTOFF = "2001-01-01T00:00:00+00:00"
 
+# users and devices created by the auth tests are recognisable by these, so
+# teardown can remove them even when a test fails half-way
+TEST_EMAIL_LIKE = "pytest-%@example.com"
+TEST_MAC_LIKE = "02:00:00:00:fe:%"
+TEST_PASSWORD = "correct-horse-battery"
+
 
 @pytest.fixture(scope="session", autouse=True)
 def database_available():
@@ -90,3 +96,36 @@ def reading(**overrides):
         "nh3_ratio": 0.4,
     }
     return {**base, **overrides}
+
+
+@pytest.fixture
+def new_email():
+    """Returns a function that makes a fresh, unused test email address."""
+    def make():
+        return f"pytest-{secrets.token_hex(6)}@example.com"
+    yield make
+    with db_engine.begin() as db:
+        # bins, and everything under them, go with the user (migration 002)
+        db.execute(text("DELETE FROM users WHERE email LIKE :like"), {"like": TEST_EMAIL_LIKE})
+        test_devices = "SELECT id FROM devices WHERE mac LIKE :like"
+        for table in ("device_apikeys", "device_bin_assn", "records", "setup_codes"):
+            db.execute(text(f"DELETE FROM {table} WHERE device_id IN ({test_devices})"), {"like": TEST_MAC_LIKE})
+        db.execute(text("DELETE FROM devices WHERE mac LIKE :like"), {"like": TEST_MAC_LIKE})
+
+
+@pytest.fixture
+def account(client, new_email):
+    """A registered user: {"email", "password", "user", "headers"}."""
+    email = new_email()
+    response = client.post(
+        "/auth/register",
+        json={"email": email, "password": TEST_PASSWORD, "display_name": "Test User"},
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    return {
+        "email": email,
+        "password": TEST_PASSWORD,
+        "user": body["user"],
+        "headers": {"Authorization": f"Bearer {body['access_token']}"},
+    }

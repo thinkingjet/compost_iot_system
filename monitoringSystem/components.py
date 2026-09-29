@@ -13,19 +13,23 @@ _graph_ids = count()
 # ------------------------------------------------------------ primitives ---
 
 def brand():
-    return dmc.Group(
+    logo = dmc.Group(
         [
             dmc.ThemeIcon(icon("leaf", 20), size=36, radius="md", variant="light"),
             dmc.Stack(
                 [
                     dmc.Text("CompostIQ", fw=700, size="md", lh=1.1),
-                    dmc.Text("Monitoring console", size="xs", c="dimmed", lh=1.1),
+                    # dropped on phones, where the header also holds the sign-in buttons
+                    dmc.Text("Monitoring console", size="xs", c="dimmed", lh=1.1, visibleFrom="xs"),
                 ],
                 gap=2,
             ),
         ],
         gap="sm",
+        wrap="nowrap",
     )
+    # the logo holds no interactive children, so all of it can link home
+    return dmc.Anchor(logo, href="/", underline="never", c="inherit", **{"aria-label": "CompostIQ home"})
 
 
 def button(label, variant="filled", icon_name=None, component_id=None, **kwargs):
@@ -37,14 +41,15 @@ def button(label, variant="filled", icon_name=None, component_id=None, **kwargs)
     return dmc.Button(label, **props)
 
 
-def linked_button(label, href, variant="filled", icon_name=None):
+def linked_button(label, href, variant="filled", icon_name=None, slot="page", **kwargs):
     """A Button that navigates to `href`.
 
     dmc.Button has no href and must not be nested inside a link, so the
     target rides in the pattern-matching id and app.py's `navigate` callback
-    moves the dcc.Location.
+    moves the dcc.Location. `slot` keeps the id unique when the header and
+    the page both link to the same place.
     """
-    return button(label, variant, icon_name, component_id={"type": "nav-button", "href": href})
+    return button(label, variant, icon_name, component_id={"type": "nav-button", "href": href, "slot": slot}, **kwargs)
 
 
 def page_header(eyebrow, title, description, action=None):
@@ -230,41 +235,86 @@ def navbar():
             dmc.NavLink(label=text, href=href, leftSection=icon(icon_name, 18), active="exact", variant="light")
             for href, icon_name, text in items
         )
-    account = dmc.Group(
-        [
-            dmc.Avatar("UP", color="compost", radius="xl"),
-            dmc.Stack([dmc.Text("UNRAM Pilot", size="sm", fw=600), dmc.Text("Administrator", size="xs", c="dimmed")], gap=0),
-        ],
-        gap="sm",
-    )
     return dmc.AppShellNavbar(
         [
             dmc.AppShellSection(links, grow=True),
-            dmc.AppShellSection([dmc.Divider(mb="sm"), account]),
+            # filled by app.py's render_page with the signed-in user
+            dmc.AppShellSection([dmc.Divider(mb="sm"), dmc.Box(id="navbar-account")]),
         ],
         p="md",
+        id="navbar",
+        display="none",
     )
+
+
+def user_name(user):
+    """What to call the user: their display name, or the start of their email."""
+    return user.get("display_name") or user["email"].split("@")[0]
+
+
+def navbar_account(user):
+    """The navbar footer: who is signed in (links to /account) and Logout."""
+    name = user_name(user)
+    return dmc.Stack(
+        [
+            dmc.NavLink(
+                label=dmc.Text(name, size="sm", fw=600, truncate="end"),
+                description=dmc.Text(user["email"], size="xs", c="dimmed", truncate="end"),
+                href="/account",
+                leftSection=dmc.Avatar(name=name, color="compost", radius="xl"),
+                active="exact",
+                variant="light",
+                **{"aria-label": "Account settings"},
+            ),
+            button("Log out", "default", icon_name="logout", component_id="logout-button", size="xs", fullWidth=True),
+        ],
+        gap="xs",
+    )
+
+
+def header_actions(public, signed_in):
+    """The header's right-hand side, which depends on the shell and the user."""
+    if not public:
+        return [
+            dmc.Badge("All systems online", color="green", variant="dot", visibleFrom="sm"),
+            dmc.ActionIcon(icon("bell", 18), id="notification-button", variant="default", size="lg", n_clicks=0, **{"aria-label": "Notifications"}),
+        ]
+    if signed_in:
+        return [linked_button("Go to dashboard", "/dashboard", slot="header")]
+    return [
+        linked_button("Sign in", "/login", "default", slot="header"),
+        # phones only have room for one button; the landing page repeats this one
+        linked_button("Create account", "/register", slot="header", visibleFrom="xs"),
+    ]
 
 
 def header():
     return dmc.AppShellHeader(
         dmc.Group(
             [
-                dmc.Group([dmc.Burger(id="burger", size="sm", hiddenFrom="sm", opened=False), brand()], gap="md"),
+                # the burger only shows in the private shell (app.py's toggle_navbar)
+                dmc.Group([dmc.Burger(id="burger", size="sm", hiddenFrom="sm", opened=False, display="none"), brand()], gap="md", wrap="nowrap"),
                 dmc.Group(
                     [
-                        dmc.Badge("All systems online", color="green", variant="dot", visibleFrom="sm"),
-                        dmc.ActionIcon(icon("bell", 18), id="notification-button", variant="default", size="lg", n_clicks=0, **{"aria-label": "Notifications"}),
+                        dmc.Group(id="header-actions", gap="sm", wrap="nowrap"),
                         dmc.ColorSchemeToggle(id="color-scheme-toggle", lightIcon=icon("sun", 18), darkIcon=icon("moon", 18), variant="default", size="lg"),
                     ],
                     gap="sm",
+                    wrap="nowrap",
                 ),
             ],
             justify="space-between",
+            wrap="nowrap",
             h="100%",
             px="md",
         )
     )
+
+
+# The public shell (/, /login, /register) is the same AppShell with the navbar
+# collapsed away, so only the header is left. It is the starting state: a
+# signed-out visitor never sees the private navigation, not even briefly.
+NAVBAR = {"width": 260, "breakpoint": "sm", "collapsed": {"mobile": True, "desktop": True}}
 
 
 def app_shell(page_root):
@@ -272,7 +322,7 @@ def app_shell(page_root):
     return dmc.AppShell(
         [header(), navbar(), dmc.AppShellMain(dmc.Container(page_root, size="xl", px={"base": 0, "sm": "md"}))],
         header={"height": 64},
-        navbar={"width": 260, "breakpoint": "sm", "collapsed": {"mobile": True}},
+        navbar=NAVBAR,
         padding="md",
         id="appshell",
     )
