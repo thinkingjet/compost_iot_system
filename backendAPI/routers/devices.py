@@ -10,13 +10,13 @@ import datetime
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, Query
 from pydantic import BaseModel, BeforeValidator, Field
 from sqlalchemy import text
 
 from database import db_engine
 from routers.auth import current_user
-from routers.bins import owned_bin
+from routers.bins import owned_bin, READING_COLUMNS, Reading
 
 router = APIRouter(prefix="/devices", tags=["devices"])
 
@@ -146,3 +146,25 @@ def unpair_device(device_id: uuid.UUID, user=Depends(current_user)):
             {"id": device_id},
         )
     return Response(status_code=204)
+
+
+@router.get("/{device_id}/records", response_model=list[Reading])
+def get_device_records(device_id: uuid.UUID, hours: Annotated[int, Query(ge=1, le=168)] = 24, user = Depends(current_user)):
+    with db_engine.connect() as db:
+        if owned_device(db, device_id, user.id) is None:
+            raise HTTPException(status_code=404, detail="The device with the given ID does not exist.")
+        since = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=hours)
+        results = db.execute(
+            text(
+                f"""
+                SELECT {READING_COLUMNS} FROM records r
+                JOIN bins b on b.id = r.bin_id
+                WHERE r.device_id = :device_id
+                AND b.user_id = :user_id
+                AND r.timestamp >= :since
+                ORDER BY timestamp ASC
+                """
+            ),
+            {"device_id":device_id, "since": since, "user_id":user.id}
+        ).all()
+    return [Reading(**row._mapping) for row in results]

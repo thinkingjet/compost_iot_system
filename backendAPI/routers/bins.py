@@ -6,8 +6,9 @@ scoped to the user, so another user's bin simply doesn't exist (404).
 """
 import uuid
 from typing import Annotated
+import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import AfterValidator, BaseModel, BeforeValidator, Field
 from sqlalchemy import text
 
@@ -32,7 +33,6 @@ class BinCreate(BaseModel):
     location: Location = ""
     country_code: CountryCode
 
-
 class Bin(BaseModel):
     id: uuid.UUID
     name: str | None
@@ -43,9 +43,21 @@ class BinChange(BaseModel):
     name: Name | None = None
     location: Location | None = None
     country_code: CountryCode | None = None
+    
+class Reading(BaseModel):
+    timestamp: datetime.datetime
+    temperature: float
+    moisture_percent: float
+    o2_percent: float
+    co2_percent: float
+    nh3_ratio: float
+    device_id: uuid.UUID
+    
 
 
 BIN_COLUMNS = "id, name, location, country_code"
+
+READING_COLUMNS = "timestamp, temperature, moisture_percent, o2_percent, co2_percent, nh3_ratio, device_id"
 
 
 def owned_bin(db, bin_id, user_id):
@@ -122,3 +134,40 @@ def change_bin(bin_id: uuid.UUID, body: BinChange, user = Depends(current_user))
     if row is None:
         raise HTTPException(status_code=404, detail="The bin with the given ID does not exist.")
     return Bin(**row._mapping)
+
+
+@router.delete("/{bin_id}", status_code=204)
+def delete_bin(bin_id: uuid.UUID, user = Depends(current_user)):
+    with db_engine.begin() as db:
+        row = db.execute(
+            text(
+                """
+                DELETE from bins
+                WHERE id = :bin_id AND user_id = :user_id
+                RETURNING id
+                """
+            ),
+            {"bin_id": bin_id, "user_id":user.id}
+        ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="The bin with the given ID does not exist.")
+        
+
+@router.get("/{bin_id}/records", response_model=list[Reading])
+def get_bin_records(bin_id: uuid.UUID, hours: Annotated[int, Query(ge=1, le=168)] = 24, user = Depends(current_user)):
+    with db_engine.connect() as db:
+        if owned_bin(db, bin_id, user.id) is None:
+            raise HTTPException(status_code=404, detail="The bin with the given ID does not exist.")
+        since = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=hours)
+        results = db.execute(
+            text(
+                f"""
+                SELECT {READING_COLUMNS} FROM records
+                WHERE bin_id = :bin_id AND timestamp >= :since
+                ORDER BY timestamp ASC
+                """
+            ),
+            {"bin_id":bin_id, "since": since}
+        ).all()
+    return [Reading(**row._mapping) for row in results]
+
