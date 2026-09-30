@@ -12,6 +12,7 @@ import logging
 import re
 import secrets
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlencode
 
@@ -38,9 +39,11 @@ from figures import telemetry_figure
 from pages import (
     account_page,
     add_device_page,
+    bin_settings_page,
     bins_page,
     dashboard_page,
     detail_page,
+    device_settings_page,
     devices_page,
     landing_page,
     login_page,
@@ -173,8 +176,19 @@ def _detail_route(pathname):
     return parts if len(parts) == 2 and parts[0] in {"bin", "device"} else None
 
 
+def _settings_route(pathname):
+    parts = [part for part in pathname.split("/") if part]
+    if len(parts) != 3 or parts[0] not in {"bins", "devices"} or parts[2] != "settings":
+        return None
+    try:
+        uuid.UUID(parts[1])
+    except ValueError:
+        return None
+    return parts[0], parts[1]
+
+
 def is_private(pathname):
-    return pathname in USER_PAGES or pathname in PRIVATE_ROUTES or _detail_route(pathname) is not None
+    return pathname in USER_PAGES or pathname in PRIVATE_ROUTES or _detail_route(pathname) is not None or _settings_route(pathname) is not None
 
 
 def private_page(pathname, user):
@@ -182,6 +196,19 @@ def private_page(pathname, user):
         return USER_PAGES[pathname](user)
     if pathname in PRIVATE_ROUTES:
         return PRIVATE_ROUTES[pathname]()
+    settings_route = _settings_route(pathname)
+    if settings_route:
+        kind, record_id = settings_route
+        try:
+            if kind == "bins":
+                return bin_settings_page(api_client.get_bin(record_id), api_client.list_devices())
+            return device_settings_page(api_client.get_device(record_id), api_client.list_bins())
+        except ApiError as error:
+            if error.status == 404:
+                return not_found_page(True)
+            return dmc.Alert("Can’t load settings right now. Try again in a moment.", color="red")
+        except (ApiUnavailable, NotAuthenticated):
+            return dmc.Alert("Can’t load settings right now. Try again in a moment.", color="red")
     return detail_page(*_detail_route(pathname))
 
 
@@ -902,14 +929,74 @@ def finish_setup(_clicks, state, name, mode, bin_id, new_name, new_location, cou
     Input("new-bin-submit", "n_clicks"),
     State("new-bin-name", "value"),
     State("new-bin-country", "value"),
+    State("new-bin-location", "value"),
     prevent_initial_call=True,
 )
-def create_bin(n_clicks, name, country):
+def create_bin(n_clicks, name, country, location):
     if not n_clicks:
         return no_update, no_update
+    name = (name or "").strip()
+    location = (location or "").strip()
     if not (name and country):
         return toast("A bin needs a name and a country.", "red"), no_update
-    return toast(f"{name} created (preview only, not saved yet).", title="Bin created"), "/bins"
+    if len(name) > 80 or len(location) > 120:
+        return toast("Name must be at most 80 characters and location at most 120.", "red"), no_update
+    try:
+        bin_data = api_client.create_bin(name, country, location)
+    except NotAuthenticated:
+        return toast(SESSION_EXPIRED, "red"), "/login"
+    except (ApiError, ApiUnavailable) as error:
+        return toast(_api_problem(error), "red"), no_update
+    return toast(f"{name} created.", title="Bin created"), f'/bins/{bin_data["id"]}/settings'
+
+
+@callback(
+    Output("notify", "sendNotifications", allow_duplicate=True),
+    Output("page-root", "children", allow_duplicate=True),
+    Input({"type": "save-bin", "id": ALL}, "n_clicks"),
+    State("edit-bin-name", "value"),
+    State("edit-bin-location", "value"),
+    State("edit-bin-country", "value"),
+    prevent_initial_call=True,
+)
+def save_bin_settings(_clicks, name, location, country):
+    if not ctx.triggered_id or not any(_clicks or []):
+        return no_update, no_update
+    name, location = (name or "").strip(), (location or "").strip()
+    if not name or not country or len(name) > 80 or len(location) > 120:
+        return toast("Enter a name and country. Name must be at most 80 characters and location at most 120.", "red"), no_update
+    try:
+        updated = api_client.update_bin(ctx.triggered_id["id"], name, country, location)
+        page = bin_settings_page(updated, api_client.list_devices())
+    except NotAuthenticated:
+        return toast(SESSION_EXPIRED, "red"), no_update
+    except (ApiError, ApiUnavailable) as error:
+        return toast(_api_problem(error), "red"), no_update
+    return toast("Bin settings saved."), page
+
+
+@callback(
+    Output("notify", "sendNotifications", allow_duplicate=True),
+    Output("page-root", "children", allow_duplicate=True),
+    Input({"type": "save-device", "id": ALL}, "n_clicks"),
+    State("edit-device-name", "value"),
+    State("edit-device-bin", "value"),
+    prevent_initial_call=True,
+)
+def save_device_settings(_clicks, name, bin_id):
+    if not ctx.triggered_id or not any(_clicks or []):
+        return no_update, no_update
+    name = (name or "").strip()
+    if not name or len(name) > 80 or not bin_id:
+        return toast("Enter a device name of at most 80 characters and choose a bin.", "red"), no_update
+    try:
+        updated = api_client.update_device(ctx.triggered_id["id"], name, bin_id)
+        page = device_settings_page(updated, api_client.list_bins())
+    except NotAuthenticated:
+        return toast(SESSION_EXPIRED, "red"), no_update
+    except (ApiError, ApiUnavailable) as error:
+        return toast(_api_problem(error), "red"), no_update
+    return toast("Device settings saved."), page
 
 
 # ------------------------------------------------------- placeholder toasts ---
@@ -918,8 +1005,6 @@ PLACEHOLDER_TOASTS = {
     "export-report": "Report export prepared",
     "review-alerts": "All alerts marked as reviewed",
     "refresh-predictions": "Predictions refreshed",
-    "save-bin-settings": "Bin settings saved",
-    "save-device-settings": "Device settings saved",
     "notification-button": "No new notifications",
 }
 

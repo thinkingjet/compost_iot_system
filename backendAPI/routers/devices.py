@@ -1,5 +1,5 @@
 """
-The signed-in user's devices: list them, finish setting one up, unpair one.
+The signed-in user's devices: list, set up, edit and unpair them.
 
 A device joins an account in two steps (routers/pairing.py): it redeems a
 pairing code and gets its key, then the user confirms it here and gives it a
@@ -132,6 +132,12 @@ def set_up_device(device_id: uuid.UUID, body: DeviceSetup, user=Depends(current_
             )
         row = owned_device(db, device_id, user.id)
     return device_out(row)
+
+
+@router.patch("/{device_id}", response_model=Device)
+def update_device(device_id: uuid.UUID, body: DeviceSetup, user=Depends(current_user)):
+    """Rename a paired device or move it to another bin owned by the user."""
+    return set_up_device(device_id, body, user)
 
 
 @router.delete("/{device_id}", status_code=204)

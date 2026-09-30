@@ -202,6 +202,38 @@ def test_moving_a_device_closes_its_old_bin(client, account):
     assert open_rows == 1
 
 
+def test_bin_settings_read_and_update_are_owned(client, account, other_account):
+    bin_ = _bin(client, account["headers"])
+    path = f'/bins/{bin_["id"]}'
+    assert client.get(path, headers=account["headers"]).json()["name"] == bin_["name"]
+    assert client.get(path, headers=other_account).status_code == 404
+    assert client.patch(path, headers=other_account, json={"name": "Wrong user", "location": "Elsewhere", "country_code": "AU"}).status_code == 404
+    response = client.patch(path, headers=account["headers"], json={"name": "  Updated bin  ", "location": "  Melbourne  ", "country_code": "au"})
+    assert response.status_code == 200, response.text
+    assert response.json()["name"] == "Updated bin"
+    assert response.json()["location"] == "Melbourne"
+    assert response.json()["country_code"] == "AU"
+    assert client.get(path, headers=account["headers"]).json() == response.json()
+
+
+def test_device_settings_rename_and_reassign_are_owned(client, account, other_account):
+    device_id, _, _ = _paired(client, account)
+    first = _bin(client, account["headers"])
+    second = _bin(client, account["headers"], name="Second bin")
+    path = f"/devices/{device_id}"
+    assert client.post(f"{path}/setup", headers=account["headers"], json={"name": "First name", "bin_id": first["id"]}).status_code == 200
+    body = {"name": "  Renamed device  ", "bin_id": second["id"]}
+    assert client.patch(path, headers=other_account, json=body).status_code == 404
+    response = client.patch(path, headers=account["headers"], json=body)
+    assert response.status_code == 200, response.text
+    assert response.json()["name"] == "Renamed device"
+    assert response.json()["bin"]["id"] == second["id"]
+    assert client.get(path, headers=account["headers"]).json() == response.json()
+    with db_engine.connect() as db:
+        open_rows = db.execute(text("SELECT count(*) FROM device_bin_assn WHERE device_id = :id AND unassigned_at IS NULL"), {"id": device_id}).scalar_one()
+    assert open_rows == 1
+
+
 def test_you_cant_set_up_someone_elses_device(client, account, other_account):
     device_id, _, _ = _paired(client, account)
     bin_ = _bin(client, other_account)

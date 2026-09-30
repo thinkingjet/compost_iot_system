@@ -1,13 +1,13 @@
 """
 The signed-in user's compost bins.
 
-Only what pairing needs so far: list them, and create one. Every query is
-scoped to the user, so another user's bin simply doesn't exist (404).
+List, create, read and edit bins. Every query is scoped to the user, so
+another user's bin simply doesn't exist (404).
 """
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import AfterValidator, BaseModel, BeforeValidator, Field
 from sqlalchemy import text
 
@@ -28,6 +28,12 @@ CountryCode = Annotated[str, Field(pattern=r"^[A-Za-z]{2}$"), AfterValidator(str
 
 
 class BinCreate(BaseModel):
+    name: Name
+    location: Location = ""
+    country_code: CountryCode
+
+
+class BinUpdate(BaseModel):
     name: Name
     location: Location = ""
     country_code: CountryCode
@@ -74,4 +80,27 @@ def create_bin(body: BinCreate, user=Depends(current_user)):
             ),
             {**body.model_dump(), "user_id": user.id},
         ).first()
+    return Bin(**row._mapping)
+
+
+@router.get("/{bin_id}", response_model=Bin)
+def get_bin(bin_id: uuid.UUID, user=Depends(current_user)):
+    with db_engine.connect() as db:
+        row = owned_bin(db, bin_id, user.id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Bin not found.")
+    return Bin(**row._mapping)
+
+
+@router.patch("/{bin_id}", response_model=Bin)
+def update_bin(bin_id: uuid.UUID, body: BinUpdate, user=Depends(current_user)):
+    with db_engine.begin() as db:
+        row = db.execute(
+            text(f"""UPDATE bins SET name = :name, location = :location,
+                     country_code = :country_code WHERE id = :id AND user_id = :user_id
+                     RETURNING {BIN_COLUMNS}"""),
+            {**body.model_dump(), "id": bin_id, "user_id": user.id},
+        ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Bin not found.")
     return Bin(**row._mapping)

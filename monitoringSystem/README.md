@@ -2,7 +2,7 @@
 
 The monitoring dashboard, built with [Plotly Dash](https://dash.plotly.com/) and [dash-mantine-components](https://www.dash-mantine-components.com/) 2.x (Mantine v8).
 
-Signed out, it is a public site. Signed in, a user reaches their own pages. Accounts are real and come from the API; the bins, devices and charts behind the sign-in still show placeholder data (`data.py`) until the API serves them.
+Signed out, it is a public site. Signed in, a user reaches their own pages. Accounts, bin and device lists, creation, pairing, and settings use the API. Telemetry charts and overview metrics still use placeholder data (`data.py`).
 
 ## Run locally
 
@@ -36,10 +36,13 @@ Open `http://127.0.0.1:8050`, and create an account or sign in as the developmen
 | `/` | public | landing page. A signed-in user stays here and gets a "Go to dashboard" button |
 | `/login`, `/register` | public | a signed-in user is sent on to `/dashboard` |
 | `/dashboard` | private | overview |
-| `/bins`, `/bins/new`, `/bin/<tab>` | private | bins |
+| `/bins`, `/bins/new` | private | list and create bins using the API |
+| `/bins/<id>/settings` | private | edit a bin and see its assigned devices |
 | `/devices` | private | the user's devices from the API; unfinished ones are marked *Needs setup* |
 | `/devices/add` | private | the pairing wizard: get a code → the device redeems it → confirm its hardware ID → name and bin → wait for the first reading. `?device=<id>` resumes setup for a device paired earlier |
-| `/device/<tab>` | private | device detail (mock data) |
+| `/devices/<id>/settings` | private | rename a device or move it to another bin |
+| `/bin/<tab>` | private | legacy detail preview (mock charts); settings directs to the real bin list |
+| `/device/<tab>` | private | legacy detail preview (mock charts); settings directs to the real device list |
 | `/account` | private | display name, change password, delete account |
 | anything else | | 404 page |
 

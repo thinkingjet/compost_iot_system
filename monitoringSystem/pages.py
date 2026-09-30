@@ -18,7 +18,6 @@ from components import (
     user_name,
 )
 from data import (
-    BINS,
     COUNTRIES,
     DEVICES,
     HISTORICAL,
@@ -32,6 +31,17 @@ from theme import icon
 CARD_GRID = {"base": 1, "sm": 2, "lg": 3}
 
 
+def managed_bin_card(bin_data, device_count=0):
+    return dmc.Card(
+        dmc.Stack([
+            dmc.Group([dmc.Title(bin_data["name"] or "Unnamed bin", order=4), dmc.Badge(bin_data.get("country_code") or "—")], justify="space-between"),
+            dmc.Text(bin_data.get("location") or "No location", c="dimmed", size="sm"),
+            dmc.Text(f"{device_count} device{'s' if device_count != 1 else ''}", size="sm"),
+            linked_button("Bin settings", f'/bins/{bin_data["id"]}/settings', variant="light", slot=bin_data["id"]),
+        ], gap="sm"), padding="lg",
+    )
+
+
 def _card_title(eyebrow, title, subtitle=None):
     children = [dmc.Text(eyebrow, size="xs", fw=700, tt="uppercase", c="dimmed"), dmc.Title(title, order=4)]
     if subtitle:
@@ -42,6 +52,14 @@ def _card_title(eyebrow, title, subtitle=None):
 # --------------------------------------------------------------- overview ---
 
 def dashboard_page(user):
+    try:
+        bins = api_client.list_bins()
+        devices = api_client.list_devices()
+        bin_cards = [managed_bin_card(item, sum(device.get("bin") is not None and device["bin"]["id"] == item["id"] for device in devices)) for item in bins]
+        device_cards = [paired_device_card(device) for device in devices]
+    except (ApiError, ApiUnavailable, NotAuthenticated):
+        bin_cards = [dmc.Alert("Can’t load your bins right now.", color="red")]
+        device_cards = [dmc.Alert("Can’t load your devices right now.", color="red")]
     alerts = dmc.SimpleGrid(
         [
             alert_card("hot", "Temperature is running high", "Bin 1 · Turn compost within 2 hours", "High"),
@@ -59,14 +77,24 @@ def dashboard_page(user):
             ),
             dmc.SimpleGrid([metric_card(metric) for metric in METRICS], cols={"base": 1, "sm": 2, "lg": 4}),
             dmc.Box([section_header("Needs attention", "Review all", action_id="review-alerts"), alerts]),
-            dmc.Box([section_header("Compost bins", "View all", "/bins"), dmc.SimpleGrid([bin_card(item) for item in BINS], cols=CARD_GRID)]),
-            dmc.Box([section_header("Devices", "View all", "/devices"), dmc.SimpleGrid([device_card(item) for item in DEVICES], cols=CARD_GRID)]),
+            dmc.Box([section_header("Compost bins", "View all", "/bins"), dmc.SimpleGrid(bin_cards, cols=CARD_GRID)]),
+            dmc.Box([section_header("Devices", "View all", "/devices"), dmc.SimpleGrid(device_cards, cols=CARD_GRID)]),
         ],
         gap="xl",
     )
 
 
 def bins_page():
+    try:
+        bins = api_client.list_bins()
+        devices = api_client.list_devices()
+        cards = [managed_bin_card(item, sum(device.get("bin") is not None and device["bin"]["id"] == item["id"] for device in devices)) for item in bins]
+    except NotAuthenticated:
+        cards = [dmc.Alert("Your session has ended. Sign in again to see your bins.", color="yellow")]
+    except (ApiUnavailable, ApiError):
+        cards = [dmc.Alert("Can’t load your bins right now. Try again in a moment.", color="red")]
+    if not cards:
+        cards = [dmc.Card(dmc.Stack([dmc.Title("No bins yet", order=4), dmc.Text("Create a bin to group your devices."), linked_button("Create bin", "/bins/new", slot="empty")]), padding="lg")]
     return dmc.Box(
         [
             page_header(
@@ -75,7 +103,7 @@ def bins_page():
                 "Monitor active batches and manage every compost location.",
                 linked_button("Create bin", "/bins/new", icon_name="plus"),
             ),
-            dmc.SimpleGrid([bin_card(item) for item in BINS], cols=CARD_GRID),
+            dmc.SimpleGrid(cards, cols=CARD_GRID),
         ]
     )
 
@@ -212,30 +240,13 @@ def _detail_row(label, value):
 
 def settings_panel(kind):
     is_bin = kind == "bin"
-    fields = [
-        dmc.TextInput(label="Name", value="Bin 1" if is_bin else "Outer Sensor"),
-        dmc.Select(label="Location", data=["UNRAM", "Primary School", "Mataram"], value="UNRAM", allowDeselect=False),
-    ]
-    if is_bin:
-        fields.append(dmc.Select(label="Country", data=COUNTRIES, value="ID", searchable=True, allowDeselect=False))
-    if is_bin:
-        details = [_detail_row("Outer Sensor", "Monitoring · Online"), _detail_row("Inner Sensor", "Monitoring · Online")]
-    else:
-        details = [
-            _detail_row("Device ID", "CMP-IQ-ESP32-01-84BF"),
-            _detail_row("MAC address", "84:F7:03:A1:2D:90"),
-            _detail_row("Firmware", "v2.4.1 · Up to date"),
-            _detail_row("Created", "18 August 2026"),
-        ]
-    general = dmc.Stack(
-        [
-            _card_title("General", "Bin settings" if is_bin else "Device settings", f'Update how this {"compost batch" if is_bin else "sensor"} appears across CompostIQ.'),
-            dmc.SimpleGrid(fields, cols={"base": 1, "sm": 2}),
-            dmc.Group(button("Save changes", component_id=f"save-{kind}-settings"), justify="flex-end"),
-        ],
-    )
-    info = dmc.Stack([_card_title("System information", "Assigned devices" if is_bin else "Device details"), dmc.Stack(details, gap="xs")])
-    return dmc.Card(dmc.SimpleGrid([general, info], cols={"base": 1, "md": 2}, spacing="xl"), padding="lg")
+    target = "/bins" if is_bin else "/devices"
+    label = "Choose a bin" if is_bin else "Choose a device"
+    return dmc.Card(dmc.Stack([
+        dmc.Title("Select a record to edit", order=4),
+        dmc.Text("Settings are saved on each bin or device’s own page.", c="dimmed"),
+        linked_button(label, target),
+    ], align="flex-start"), padding="lg")
 
 
 def detail_page(kind, tab):
@@ -422,6 +433,38 @@ def new_bin_page():
             dmc.Card(form, padding="lg"),
         ]
     )
+
+
+def bin_settings_page(bin_data, devices):
+    assigned = [device for device in devices if device.get("bin") and device["bin"]["id"] == bin_data["id"]]
+    return dmc.Box([
+        page_header("Compost bin", f'{bin_data["name"] or "Unnamed bin"} settings', "Edit this bin and see its assigned devices.", linked_button("Back to bins", "/bins", variant="default")),
+        dmc.Card(dmc.Stack([
+            dmc.TextInput(id="edit-bin-name", label="Bin name", value=bin_data["name"] or "", required=True),
+            dmc.TextInput(id="edit-bin-location", label="Location", value=bin_data["location"] or ""),
+            dmc.Select(id="edit-bin-country", label="Country", data=COUNTRIES, value=bin_data.get("country_code"), searchable=True, required=True),
+            dmc.Group(button("Save changes", component_id={"type": "save-bin", "id": bin_data["id"]}), justify="flex-end"),
+        ], maw=480), padding="lg"),
+        dmc.Card(dmc.Stack([
+            dmc.Title("Assigned devices", order=4),
+            *[linked_button(device["name"] or device["hardware_id"], f'/devices/{device["id"]}/settings', variant="subtle", slot=device["id"]) for device in assigned],
+            *([] if assigned else [dmc.Text("No devices assigned yet.", c="dimmed")]),
+        ]), padding="lg", mt="md"),
+    ])
+
+
+def device_settings_page(device, bins):
+    return dmc.Box([
+        page_header("Monitoring device", f'{device["name"] or "New device"} settings', "Rename this device or assign it to a bin.", linked_button("Back to devices", "/devices", variant="default")),
+        dmc.Card(dmc.Stack([
+            dmc.TextInput(id="edit-device-name", label="Device name", value=device["name"] or "", required=True),
+            dmc.Select(id="edit-device-bin", label="Compost bin", data=[{"value": item["id"], "label": item["name"] or "Unnamed bin"} for item in bins], value=device["bin"]["id"] if device.get("bin") else None, required=True),
+            *([linked_button("View current bin settings", f'/bins/{device["bin"]["id"]}/settings', variant="subtle", slot="device-bin")] if device.get("bin") else []),
+            dmc.Text(f'Hardware ID: {device["hardware_id"]}', size="sm", c="dimmed"),
+            dmc.Text(f'Model: {device.get("model") or "Unknown"} · Firmware: {device.get("firmware_version") or "Unknown"}', size="sm", c="dimmed"),
+            dmc.Group(button("Save changes", component_id={"type": "save-device", "id": device["id"]}), justify="flex-end"),
+        ], maw=480), padding="lg"),
+    ])
 
 
 # ------------------------------------------------------------ public pages ---

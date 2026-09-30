@@ -35,8 +35,8 @@ uv run uvicorn main:app --reload --port 8000
 | `main.py` | the app, `POST /records` and the device `x-key` authentication |
 | `routers/auth.py` | user accounts and the `current_user` dependency |
 | `routers/pairing.py` | pairing codes: issue, check, and redeem one for a device key |
-| `routers/devices.py` | the user's devices: list, set up (name + bin), unpair |
-| `routers/bins.py` | the user's bins: list, create |
+| `routers/devices.py` | the user's devices: list, set up, edit (name + bin), unpair |
+| `routers/bins.py` | the user's bins: list, create, read, edit |
 | `database.py` | the one SQLAlchemy engine everything shares |
 | `config.py` | settings, from the environment or `.env` |
 
@@ -91,9 +91,12 @@ If the hardware ID doesn't match, "That's not my device" calls `DELETE /devices/
 | GET | `/devices` | Bearer | | 200 list of devices | 401 |
 | GET | `/devices/{id}` | Bearer | | 200 device | 401 · 404 |
 | POST | `/devices/{id}/setup` | Bearer | `{name, bin_id}` | 200 device | 401 · 404 device or bin not the user's · 422 |
+| PATCH | `/devices/{id}` | Bearer | `{name, bin_id}` | 200 device | 401 · 404 device or bin not the user's · 422 |
 | DELETE | `/devices/{id}` | Bearer | | 204 | 401 · 404 |
 | GET | `/bins` | Bearer | | 200 list of bins | 401 |
 | POST | `/bins` | Bearer | `{name, location?, country_code}` | 201 bin | 401 · 422 |
+| GET | `/bins/{id}` | Bearer | | 200 bin | 401 · 404 |
+| PATCH | `/bins/{id}` | Bearer | `{name, location?, country_code}` | 200 bin | 401 · 404 · 422 |
 
 `status` is `pending`, `expired` or `redeemed`; once redeemed, `device` is the device that used it. A device is `{id, hardware_id, name, model, firmware_version, paired_at, last_seen_at, bin: {id, name} | null, set_up}`, where `set_up` means it has a name and a bin, so its readings are accepted.
 

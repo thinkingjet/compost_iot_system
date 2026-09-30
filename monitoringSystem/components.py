@@ -230,7 +230,7 @@ def paired_device_card(device):
             dmc.Text(device["name"] or "New device", fw=600, size="lg", mt="md"),
             dmc.Text(f"{where} · {device['model'] or 'Unknown model'}", size="sm", c="dimmed"),
             dmc.Code(device["hardware_id"], mt="xs", w="fit-content"),
-            dmc.Group(footer, mt="md"),
+            dmc.Group([footer, linked_button("Device settings", f'/devices/{device["id"]}/settings', variant="light", size="xs", slot=f'settings-{device["id"]}')], mt="md", justify="space-between"),
         ],
         padding="md",
     )

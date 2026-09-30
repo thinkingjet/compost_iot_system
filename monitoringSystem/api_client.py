@@ -126,6 +126,10 @@ def set_up_device(device_id, name, bin_id):
     return _request("POST", f"/devices/{device_id}/setup", json={"name": name, "bin_id": bin_id})
 
 
+def update_device(device_id, name, bin_id):
+    return _request("PATCH", f"/devices/{device_id}", json={"name": name, "bin_id": bin_id})
+
+
 def unpair_device(device_id):
     return _request("DELETE", f"/devices/{device_id}")
 
@@ -134,6 +138,15 @@ def list_bins():
     return _request("GET", "/bins")
 
 
+def get_bin(bin_id):
+    return _request("GET", f"/bins/{bin_id}")
+
+
 def create_bin(name, country_code, location=""):
     body = {"name": name, "location": location or "", "country_code": country_code}
     return _request("POST", "/bins", json=body)
+
+
+def update_bin(bin_id, name, country_code, location=""):
+    body = {"name": name, "location": location or "", "country_code": country_code}
+    return _request("PATCH", f"/bins/{bin_id}", json=body)
