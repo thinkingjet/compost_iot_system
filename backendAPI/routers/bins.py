@@ -52,7 +52,12 @@ class Reading(BaseModel):
     co2_percent: float
     nh3_ratio: float
     device_id: uuid.UUID
-    
+
+
+class DailyReading(BaseModel):
+    day: datetime.date
+    avg_temp: float
+    max_temp: float
 
 
 BIN_COLUMNS = "id, name, location, country_code"
@@ -170,4 +175,27 @@ def get_bin_records(bin_id: uuid.UUID, hours: Annotated[int, Query(ge=1, le=168)
             {"bin_id":bin_id, "since": since}
         ).all()
     return [Reading(**row._mapping) for row in results]
+
+
+@router.get("/{bin_id}/history", response_model=list[DailyReading])
+def get_bin_history(bin_id: uuid.UUID, days: Annotated[int, Query(ge=1, le=365)] = 30, user = Depends(current_user)):
+    with db_engine.connect() as db:
+        if owned_bin(db, bin_id, user.id) is None:
+            raise HTTPException(status_code=404, detail="The bin with the given ID does not exist.")
+        since = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
+        results = db.execute(
+            text(
+                """
+                SELECT timestamp::date AS day,
+                    avg(temperature) AS avg_temp,
+                    max(temperature) AS max_temp
+                FROM records
+                WHERE bin_id = :bin_id AND timestamp >= :since
+                GROUP BY day
+                ORDER BY day
+                """
+            ),
+            {"bin_id":bin_id, "since": since}
+        ).all()
+    return [DailyReading(**row._mapping) for row in results]
 

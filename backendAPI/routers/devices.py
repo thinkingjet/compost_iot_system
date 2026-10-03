@@ -41,10 +41,19 @@ class Device(BaseModel):
     set_up: bool
 
 
+# the rules for a device name, shared by setup and PATCH
+DeviceName = Annotated[str, BeforeValidator(lambda v: v.strip() if isinstance(v, str) else v),
+                       Field(min_length=1, max_length=80)]
+
+
 class DeviceSetup(BaseModel):
-    name: Annotated[str, BeforeValidator(lambda v: v.strip() if isinstance(v, str) else v),
-                    Field(min_length=1, max_length=80)]
+    name: DeviceName
     bin_id: uuid.UUID
+
+
+class DeviceChange(BaseModel):
+    name: DeviceName | None = None
+    bin_id: uuid.UUID | None = None
 
 
 DEVICE_SELECT = """
@@ -91,6 +100,28 @@ def release_device(db, device_id):
     )
 
 
+def change_device(db, device, user_id, name=None, bin_id=None):
+    """Rename the device and/or move it to another of the user's bins.
+
+    Shared by setup and PATCH; anything left as None is not changed.
+    """
+    if bin_id is not None and owned_bin(db, bin_id, user_id) is None:
+        raise HTTPException(status_code=404, detail="Bin not found.")
+
+    if name is not None:
+        db.execute(text("UPDATE devices SET name = :name WHERE id = :id"), {"name": name, "id": device.id})
+
+    if bin_id is not None and device.bin_id != bin_id:
+        db.execute(
+            text("UPDATE device_bin_assn SET unassigned_at = now() WHERE device_id = :id AND unassigned_at IS NULL"),
+            {"id": device.id},
+        )
+        db.execute(
+            text("INSERT INTO device_bin_assn (device_id, bin_id) VALUES (:id, :bin_id)"),
+            {"id": device.id, "bin_id": bin_id},
+        )
+
+
 @router.get("", response_model=list[Device])
 def list_devices(user=Depends(current_user)):
     with db_engine.connect() as db:
@@ -117,19 +148,7 @@ def set_up_device(device_id: uuid.UUID, body: DeviceSetup, user=Depends(current_
         device = owned_device(db, device_id, user.id)
         if device is None:
             raise NOT_FOUND
-        if owned_bin(db, body.bin_id, user.id) is None:
-            raise HTTPException(status_code=404, detail="Bin not found.")
-
-        db.execute(text("UPDATE devices SET name = :name WHERE id = :id"), {"name": body.name, "id": device_id})
-        if device.bin_id != body.bin_id:
-            db.execute(
-                text("UPDATE device_bin_assn SET unassigned_at = now() WHERE device_id = :id AND unassigned_at IS NULL"),
-                {"id": device_id},
-            )
-            db.execute(
-                text("INSERT INTO device_bin_assn (device_id, bin_id) VALUES (:id, :bin_id)"),
-                {"id": device_id, "bin_id": body.bin_id},
-            )
+        change_device(db, device, user.id, name=body.name, bin_id=body.bin_id)
         row = owned_device(db, device_id, user.id)
     return device_out(row)
 
@@ -168,3 +187,17 @@ def get_device_records(device_id: uuid.UUID, hours: Annotated[int, Query(ge=1, l
             {"device_id":device_id, "since": since, "user_id":user.id}
         ).all()
     return [Reading(**row._mapping) for row in results]
+
+
+@router.patch("/{device_id}", response_model=Device)
+def update_device(device_id: uuid.UUID, body: DeviceChange, user=Depends(current_user)):
+    """Device settings: rename it and/or move it to another of the user's bins."""
+    if body.name is None and body.bin_id is None:
+        raise HTTPException(status_code=422, detail="No fields are being changed.")
+    with db_engine.begin() as db:
+        device = owned_device(db, device_id, user.id)
+        if device is None:
+            raise NOT_FOUND
+        change_device(db, device, user.id, name=body.name, bin_id=body.bin_id)
+        row = owned_device(db, device_id, user.id)
+    return device_out(row)

@@ -7,7 +7,8 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from database import db_engine
-from routers import auth, bins, devices, pairing
+from routers import alerts, auth, bins, devices, pairing
+from routers.alerts import record_alerts
 
 
 class Record(BaseModel):
@@ -23,6 +24,7 @@ app.include_router(auth.router)
 app.include_router(pairing.router)
 app.include_router(devices.router)
 app.include_router(bins.router)
+app.include_router(alerts.router)
 
 api_key_header = APIKeyHeader(name = "x-key")
 
@@ -83,4 +85,6 @@ def send_records (readings: list[Record], device_id: str = Depends(authenticatio
                             :moisture_percent, :o2_percent, :co2_percent, :nh3_ratio)
                             """),
                 [{"device_id": device_id, "bin_id": bin_id, **reading.model_dump()} for reading in readings])
+            # same transaction: the readings and their incidents are saved together
+            record_alerts(db, bin_id, readings)
     return readings
