@@ -20,3 +20,8 @@ dependencies = [
 members = [
     "backendAPI",
 ]
+
+# editor type checking (Pylance/pyright): the API runs from inside backendAPI/,
+# so its local imports (database, config, routers) resolve from there
+[tool.pyright]
+extraPaths = ["backendAPI"]
