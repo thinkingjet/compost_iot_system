@@ -169,6 +169,35 @@ def bin_card(bin_data):
     )
     return _card_link(card, "/bin/live")
 
+def user_bin_card(bin_data):
+    """A real bin from GET /bins."""
+    card = dmc.Card(
+        [
+            dmc.CardSection(
+                [
+                    dmc.Group(
+                        [
+                            dmc.Stack(
+                                [
+                                    dmc.Text(bin_data["name"], fw=600),
+                                    dmc.Text(bin_data["location"], size="xs", c="dimmed"),
+                                ],
+                                gap=0,
+                            ),
+                            dmc.ThemeIcon(icon("bin", 16), variant="light", size="md"),
+                        ],
+                        justify="space-between",
+                        align="flex-start",
+                    ),
+                ],
+                p="md",
+                withBorder=True,
+            ),
+        ],
+        padding="md",
+    )
+    return _card_link(card, "/bin/live")
+
 
 def device_card(device):
     card = dmc.Card(

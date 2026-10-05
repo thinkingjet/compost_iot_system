@@ -15,6 +15,7 @@ from components import (
     paired_device_card,
     plot,
     section_header,
+    user_bin_card,
     user_name,
 )
 from data import (
@@ -67,17 +68,21 @@ def dashboard_page(user):
 
 
 def bins_page():
-    return dmc.Box(
-        [
-            page_header(
+    header = page_header(
                 "Management",
                 "Compost bins",
                 "Monitor active batches and manage every compost location.",
                 linked_button("Create bin", "/bins/new", icon_name="plus"),
-            ),
-            dmc.SimpleGrid([bin_card(item) for item in BINS], cols=CARD_GRID),
-        ]
-    )
+            )
+    try:
+        user_bins = api_client.list_bins()
+    except NotAuthenticated:
+        return dmc.Box([header, dmc.Alert("You are not authenticated. Please sign in again.", color="orange")])
+    except (ApiError, ApiUnavailable):
+        return dmc.Box([header, dmc.Alert("Something went wrong. Please try again in a bit.", color="red")])
+    if not user_bins:
+        return dmc.Box([header, dmc.Text("You do not have any added bins yet.")])
+    return dmc.Box([header, dmc.SimpleGrid([user_bin_card(b) for b in user_bins], cols=CARD_GRID)])
 
 
 def devices_page():
