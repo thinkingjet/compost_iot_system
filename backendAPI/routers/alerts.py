@@ -67,8 +67,8 @@ def broken_rules(reading):
 def record_alerts(db, bin_id, readings):
     """Open and resolve the bin's incidents for a batch of readings.
 
-    Runs inside POST /records' transaction, so readings and incidents are
-    saved together or not at all.
+    Runs inside POST /records' transaction, before the batch is inserted, so
+    readings and incidents are saved together or not at all.
     """
     # looked up once per upload; kept up to date as the batch is walked
     open_types = set(db.execute(
@@ -76,8 +76,17 @@ def record_alerts(db, bin_id, readings):
         {"bin_id": bin_id},
     ).scalars())
 
+    # a device uploading a backlog late must not rewrite incidents that newer
+    # readings already decided, e.g. resolve one before it was triggered
+    latest_stored = db.execute(
+        text("SELECT max(timestamp) FROM records WHERE bin_id = :bin_id"),
+        {"bin_id": bin_id},
+    ).scalar()
+
     # a batch can arrive out of order; incidents must follow the readings' time
     for reading in sorted(readings, key=lambda r: r.timestamp):
+        if latest_stored is not None and reading.timestamp <= latest_stored:
+            continue
         broken = broken_rules(reading)
         for alert_type in SEVERITY:
             if alert_type in broken and alert_type not in open_types:

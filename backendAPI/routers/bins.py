@@ -64,6 +64,9 @@ BIN_COLUMNS = "id, name, location, country_code"
 
 READING_COLUMNS = "timestamp, temperature, moisture_percent, o2_percent, co2_percent, nh3_ratio, device_id"
 
+# days in /history start at midnight here, not in the database server's timezone
+SITE_TIMEZONE = "Asia/Makassar"
+
 
 def owned_bin(db, bin_id, user_id):
     """The user's bin, or None if it doesn't exist or belongs to someone else."""
@@ -186,7 +189,7 @@ def get_bin_history(bin_id: uuid.UUID, days: Annotated[int, Query(ge=1, le=365)]
         results = db.execute(
             text(
                 """
-                SELECT timestamp::date AS day,
+                SELECT (timestamp AT TIME ZONE :tz)::date AS day,
                     avg(temperature) AS avg_temp,
                     max(temperature) AS max_temp
                 FROM records
@@ -195,7 +198,7 @@ def get_bin_history(bin_id: uuid.UUID, days: Annotated[int, Query(ge=1, le=365)]
                 ORDER BY day
                 """
             ),
-            {"bin_id":bin_id, "since": since}
+            {"bin_id":bin_id, "since": since, "tz": SITE_TIMEZONE}
         ).all()
     return [DailyReading(**row._mapping) for row in results]
 
