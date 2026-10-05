@@ -167,7 +167,7 @@ def bin_card(bin_data):
         ],
         padding="md",
     )
-    return _card_link(card, "/bin/live")
+    return _card_link(card, f"/bin/live")
 
 def user_bin_card(bin_data):
     """A real bin from GET /bins."""
@@ -196,7 +196,7 @@ def user_bin_card(bin_data):
         ],
         padding="md",
     )
-    return _card_link(card, "/bin/live")
+    return _card_link(card, f"/bin/{bin_data['id']}/live")
 
 
 def device_card(device):

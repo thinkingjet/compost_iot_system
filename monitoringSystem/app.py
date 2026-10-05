@@ -38,9 +38,11 @@ from figures import telemetry_figure
 from pages import (
     account_page,
     add_device_page,
+    bin_detail_page,
     bins_page,
     dashboard_page,
     detail_page,
+    device_detail_page,
     devices_page,
     landing_page,
     login_page,
@@ -168,9 +170,18 @@ def next_page(search):
 
 
 def _detail_route(pathname):
-    """("bin" | "device", tab) for a detail URL such as /bin/live, else None."""
+    """(kind, id, tab) for a detail URL such as /bin/<id>/live, else None.
+
+    The mock cards still link to /bin/live and /device/live, which have no id.
+    """
     parts = [part for part in pathname.split("/") if part]
-    return parts if len(parts) == 2 and parts[0] in {"bin", "device"} else None
+    if not parts or parts[0] not in {"bin", "device"}:
+        return None
+    if len(parts) == 3:
+        return parts[0], parts[1], parts[2]
+    if len(parts) == 2:
+        return parts[0], None, parts[1]
+    return None
 
 
 def is_private(pathname):
@@ -182,7 +193,13 @@ def private_page(pathname, user):
         return USER_PAGES[pathname](user)
     if pathname in PRIVATE_ROUTES:
         return PRIVATE_ROUTES[pathname]()
-    return detail_page(*_detail_route(pathname))
+    kind, item_id, tab = _detail_route(pathname)
+    if item_id is None:
+        # an old mock link such as /bin/live
+        return detail_page(kind, None, tab)
+    if kind == "bin":
+        return bin_detail_page(item_id, tab)
+    return device_detail_page(item_id, tab)
 
 
 # ----------------------------------------------------------------- routing ---
@@ -282,7 +299,12 @@ def navigate(_clicks):
 def switch_detail_tab(values, pathname):
     if not ctx.triggered_id or not values or not values[0]:
         return no_update
-    target = f'/{ctx.triggered_id["kind"]}/{values[0]}'
+    route = _detail_route(pathname or "")
+    if route is None:
+        return no_update
+    kind, item_id, _ = route
+    # keep the bin or device in the address; only the tab changes
+    target = f"/{kind}/{item_id}/{values[0]}" if item_id else f"/{kind}/{values[0]}"
     return no_update if target == pathname else target
 
 

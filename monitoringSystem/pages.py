@@ -243,7 +243,7 @@ def settings_panel(kind):
     return dmc.Card(dmc.SimpleGrid([general, info], cols={"base": 1, "md": 2}, spacing="xl"), padding="lg")
 
 
-def detail_page(kind, tab):
+def detail_page(kind, item_id, tab):
     is_bin = kind == "bin"
     valid = {"live", "history", "settings"} | ({"maintenance", "devices"} if is_bin else set())
     tab = tab if tab in valid else "live"
@@ -266,6 +266,49 @@ def detail_page(kind, tab):
         button("Export report", "default", icon_name="download", component_id="export-report"),
     )
     return dmc.Box([header, detail_tabs(kind, tab), panel])
+
+
+def bin_detail_page(bin_id, tab):
+    try:
+        bin_data = api_client.get_bin(bin_id)
+    except NotAuthenticated:
+        return dmc.Alert("Your session has ended. Please sign in again.", color="yellow")
+    except (ApiError, ApiUnavailable):
+        return dmc.Alert("Can't load this bin right now.", color="red")
+
+    if tab == "history":
+        panel = history_panel()
+    elif tab == "settings":
+        panel = settings_panel("bin")
+    elif tab == "maintenance":
+        panel = maintenance_panel()
+    elif tab == "devices":
+        panel = devices_panel()
+    else:
+        panel = live_panel("bin")
+
+    header = page_header("Compost bin", bin_data["name"], bin_data["location"])
+    return dmc.Box([header, detail_tabs("bin", tab), panel])
+
+
+def device_detail_page(device_id, tab):
+    try:
+        device = api_client.get_device(device_id)
+    except NotAuthenticated:
+        return dmc.Alert("Your session has ended. Please sign in again.", color="yellow")
+    except (ApiError, ApiUnavailable):
+        return dmc.Alert("Can't load this device right now.", color="red")
+
+    if tab == "history":
+        panel = history_panel()
+    elif tab == "settings":
+        panel = settings_panel("device")
+    else:
+        panel = live_panel("device")
+
+    bin_name = device["bin"]["name"] if device["bin"] else "Not in a bin yet"
+    header = page_header("Monitoring device", device["name"] or "New device", bin_name)
+    return dmc.Box([header, detail_tabs("device", tab), panel])
 
 
 # ------------------------------------------------------------ create flows ---
