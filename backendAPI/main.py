@@ -78,6 +78,9 @@ def send_records (readings: list[Record], device_id: str = Depends(authenticatio
             bin_id = res.bin_id
 
         if readings:
+            # before the insert: it compares the batch with what was stored before it.
+            # same transaction: the readings and their incidents are saved together
+            record_alerts(db, bin_id, readings)
             db.execute(text("""
                             INSERT INTO records (device_id, bin_id, timestamp,
                             temperature, moisture_percent, o2_percent, co2_percent, nh3_ratio)
@@ -85,6 +88,4 @@ def send_records (readings: list[Record], device_id: str = Depends(authenticatio
                             :moisture_percent, :o2_percent, :co2_percent, :nh3_ratio)
                             """),
                 [{"device_id": device_id, "bin_id": bin_id, **reading.model_dump()} for reading in readings])
-            # same transaction: the readings and their incidents are saved together
-            record_alerts(db, bin_id, readings)
     return readings
