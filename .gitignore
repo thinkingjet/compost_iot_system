@@ -8,3 +8,6 @@ simulator/Data/
 
 # secrets
 .env
+
+# built website (website/build.py)
+website/dist/

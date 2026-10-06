@@ -1,15 +1,23 @@
 # NGINX setup (Ubuntu VM)
 
-The site is served on two subdomains: `dashboard.compostiq.win` and `api.compostiq.win`.
-Both need DNS A records pointing at the VM, and ports 80 and 443 must be open.
+Three sites share the VM:
 
-If DNS is on Cloudflare, set both records to **DNS only** (grey cloud) while requesting the certificate.
+| Address | What | Served by |
+|---|---|---|
+| `compostiq.win` (and `www.`, which redirects) | The public website | NGINX, from the static files in `/var/www/compostiq/site` ([website/README.md](../../website/README.md)) |
+| `dashboard.compostiq.win` | The dashboard | PM2 `compostiq-dashboard`, port 8050 |
+| `api.compostiq.win` | The API | PM2 `compostiq-api`, port 8000 |
+
+All four names need DNS A records pointing at the VM, and ports 80 and 443 must be open.
+
+If DNS is on Cloudflare, set every record to **DNS only** (grey cloud) while requesting the certificate.
 Afterwards you can turn the proxy back on, but set Cloudflare's SSL/TLS mode to **Full (strict)**.
 The **Flexible** mode causes an endless redirect loop with this config.
 
 ```bash
 sudo apt install -y nginx certbot python3-certbot-nginx
-sudo certbot certonly --nginx -d dashboard.compostiq.win -d api.compostiq.win   # get the cert first
+sudo certbot certonly --nginx --expand -d dashboard.compostiq.win -d api.compostiq.win \
+    -d compostiq.win -d www.compostiq.win            # get the cert first
 sudo cp compostiq.conf /etc/nginx/sites-available/compostiq.conf
 sudo ln -s /etc/nginx/sites-available/compostiq.conf /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
