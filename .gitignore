@@ -11,3 +11,4 @@ simulator/Data/
 
 # built website (website/build.py)
 website/dist/
+.vscode/
