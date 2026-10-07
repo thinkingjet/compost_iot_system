@@ -169,8 +169,15 @@ def bin_card(bin_data):
     )
     return _card_link(card, "/bin/live")
 
-def user_bin_card(bin_data):
-    """A real bin from GET /bins."""
+def user_bin_card(bin_data, devices):
+    """A real bin from GET /bins, with the devices from GET /devices that are in it."""
+    count = f"{len(devices)} device" if len(devices) == 1 else f"{len(devices)} devices"
+    if not devices:
+        status = dmc.Badge("No devices", color="gray", variant="light", size="sm")
+    elif any(_is_online(device) for device in devices):
+        status = online_badge()
+    else:
+        status = dmc.Badge("Offline", color="gray", variant="dot", size="sm")
     card = dmc.Card(
         [
             dmc.CardSection(
@@ -180,7 +187,7 @@ def user_bin_card(bin_data):
                             dmc.Stack(
                                 [
                                     dmc.Text(bin_data["name"], fw=600),
-                                    dmc.Text(bin_data["location"], size="xs", c="dimmed"),
+                                    dmc.Text(" · ".join(part for part in (bin_data["location"], count) if part), size="xs", c="dimmed"),
                                 ],
                                 gap=0,
                             ),
@@ -193,6 +200,7 @@ def user_bin_card(bin_data):
                 p="md",
                 withBorder=True,
             ),
+            dmc.Group(status, mt="md"),
         ],
         padding="md",
     )
@@ -235,11 +243,15 @@ def time_ago(iso):
     return datetime.fromisoformat(iso).strftime("%d %b %Y")
 
 
+def _is_online(device):
+    seen = device.get("last_seen_at")
+    return bool(seen) and datetime.now(timezone.utc) - datetime.fromisoformat(seen) < ONLINE_WITHIN
+
+
 def _device_status(device):
     if not device["set_up"]:
         return dmc.Badge("Needs setup", color="yellow", variant="light", size="sm")
-    seen = device.get("last_seen_at")
-    if seen and datetime.now(timezone.utc) - datetime.fromisoformat(seen) < ONLINE_WITHIN:
+    if _is_online(device):
         return online_badge()
     return dmc.Badge("Offline", color="gray", variant="dot", size="sm")
 

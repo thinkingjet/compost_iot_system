@@ -77,13 +77,16 @@ def bins_page():
             )
     try:
         user_bins = api_client.list_bins()
+        devices = api_client.list_devices()
     except NotAuthenticated:
         return dmc.Box([header, dmc.Alert("You are not authenticated. Please sign in again.", color="orange")])
     except (ApiError, ApiUnavailable):
         return dmc.Box([header, dmc.Alert("Something went wrong. Please try again in a bit.", color="red")])
     if not user_bins:
         return dmc.Box([header, dmc.Text("You do not have any added bins yet.")])
-    return dmc.Box([header, dmc.SimpleGrid([user_bin_card(b) for b in user_bins], cols=CARD_GRID)])
+    # each card gets the devices that are in its bin
+    cards = [user_bin_card(b, [d for d in devices if d["bin"] and d["bin"]["id"] == b["id"]]) for b in user_bins]
+    return dmc.Box([header, dmc.SimpleGrid(cards, cols=CARD_GRID)])
 
 
 def devices_page():
