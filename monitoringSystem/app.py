@@ -34,7 +34,7 @@ from dash import (
     html,
     no_update,
 )
-from figures import telemetry_figure
+from figures import readings_figure
 from pages import (
     account_page,
     add_device_page,
@@ -355,10 +355,24 @@ def _register_live_range(kind):
         Output({"type": "graph", "index": f"{kind}-live-chart"}, "figure", allow_duplicate=True),
         Input({"type": "live-range", "kind": kind}, "value"),
         State("color-scheme-toggle", "computedColorScheme"),
+        State("url", "pathname"),
         prevent_initial_call=True,
     )
-    def update_range(value, color_scheme):
-        figure = telemetry_figure(int(value or 24))
+    def update_range(value, color_scheme, pathname):
+        item_id = _detail_route(pathname)[1]
+        if item_id is None:
+            return no_update
+        hours = int(value or 24)
+        try:
+            if kind == "bin":
+                readings = api_client.get_bin_records(item_id, hours)
+            else:
+                readings = api_client.get_device_records(item_id, hours)
+            names = {d["id"]: d["name"] for d in api_client.list_devices()}
+        except (NotAuthenticated, ApiError, ApiUnavailable):
+            # keep the chart as it is; the next page load shows what's wrong
+            return no_update
+        figure = readings_figure(readings, names)
         figure.update_layout(template=figure_template(color_scheme))
         return figure
 

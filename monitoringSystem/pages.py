@@ -28,7 +28,7 @@ from data import (
     METRICS,
     TELEMETRY,
 )
-from figures import health_figure, phase_history_figure, sparkline, telemetry_figure
+from figures import health_figure, phase_history_figure, readings_figure, sparkline
 from theme import icon
 
 CARD_GRID = {"base": 1, "sm": 2, "lg": 3}
@@ -144,10 +144,29 @@ def sensor_strip():
     )
 
 
-def live_panel(kind):
+def readings_strip(readings):
+    """The latest value of each sensor, with a small line of the readings behind it."""
+    def chip(label, key, unit, color):
+        values = [r[key] for r in readings]
+        return _sensor_chip(label, f"{values[-1]:.1f}" if values else "–", unit, values, color)
+
+    return dmc.SimpleGrid(
+        [
+            chip("Temperature", "temperature", "°C", "temperature"),
+            chip("Moisture", "moisture_percent", "%", "moisture"),
+            chip("Oxygen", "o2_percent", "%", "oxygen"),
+            chip("CO₂", "co2_percent", "%", "co2"),
+        ],
+        cols={"base": 2, "md": 4},
+        mb="md",
+    )
+
+
+def live_panel(kind, readings, device_names):
+    updated = f"Updated {time_ago(readings[-1]['timestamp'])}" if readings else "No readings yet"
     toolbar = dmc.Group(
         [
-            _card_title("Live data", "Environmental telemetry" if kind == "bin" else "Sensor readings", "Updated 14 seconds ago"),
+            _card_title("Live data", "Environmental telemetry" if kind == "bin" else "Sensor readings", updated),
             dmc.SegmentedControl(
                 id={"type": "live-range", "kind": kind},
                 data=[{"label": "6h", "value": "6"}, {"label": "24h", "value": "24"}, {"label": "7d", "value": "168"}],
@@ -159,7 +178,8 @@ def live_panel(kind):
         align="flex-start",
         mb="sm",
     )
-    return dmc.Box([sensor_strip(), dmc.Card([toolbar, plot(telemetry_figure(), name=f"{kind}-live-chart")], padding="md")])
+    chart = plot(readings_figure(readings, device_names), name=f"{kind}-live-chart")
+    return dmc.Box([readings_strip(readings), dmc.Card([toolbar, chart], padding="md")])
 
 
 def maintenance_panel():
@@ -320,7 +340,8 @@ def detail_page(kind, item_id, tab):
     tab = tab if tab in valid else "live"
 
     if tab == "live":
-        panel = live_panel(kind)
+        # old mock route (/bin/live): no bin to read from, so an empty chart
+        panel = live_panel(kind, [], {})
     elif tab == "history":
         panel = history_panel()
     elif tab == "settings":
@@ -345,8 +366,8 @@ def bin_detail_page(bin_id, tab):
 
     try:
         bin_data = api_client.get_bin(bin_id)
-        # the API lists all the user's devices; keep the ones in this bin
-        devices = [d for d in api_client.list_devices() if d["bin"] and d["bin"]["id"] == bin_id] if tab == "devices" else []
+        all_devices = api_client.list_devices() if tab in ("devices", "live") else []
+        readings = api_client.get_bin_records(bin_id) if tab == "live" else []
     except NotAuthenticated:
         return dmc.Alert("Your session has ended. Please sign in again.", color="yellow")
     except ApiError:
@@ -362,9 +383,10 @@ def bin_detail_page(bin_id, tab):
     elif tab == "maintenance":
         panel = maintenance_panel()
     elif tab == "devices":
-        panel = bin_devices_panel(bin_data, devices)
+        # the API lists all the user's devices; keep the ones in this bin
+        panel = bin_devices_panel(bin_data, [d for d in all_devices if d["bin"] and d["bin"]["id"] == bin_id])
     else:
-        panel = live_panel("bin")
+        panel = live_panel("bin", readings, {d["id"]: d["name"] for d in all_devices})
 
     header = page_header("Compost bin", bin_data["name"], bin_data["location"])
     return dmc.Box([header, detail_tabs("bin", tab), panel])
@@ -378,6 +400,7 @@ def device_detail_page(device_id, tab):
         device = api_client.get_device(device_id)
         # the settings form lets the user pick another of their bins
         bins = api_client.list_bins() if tab == "settings" else []
+        readings = api_client.get_device_records(device_id) if tab == "live" else []
     except NotAuthenticated:
         return dmc.Alert("Your session has ended. Please sign in again.", color="yellow")
     except ApiError:
@@ -390,7 +413,7 @@ def device_detail_page(device_id, tab):
     elif tab == "settings":
         panel = device_settings_panel(device, bins)
     else:
-        panel = live_panel("device")
+        panel = live_panel("device", readings, {})
 
     bin_name = device["bin"]["name"] if device["bin"] else "Not in a bin yet"
     header = page_header("Monitoring device", device["name"] or "New device", bin_name)

@@ -63,6 +63,38 @@ def telemetry_figure(hours=24):
     return figure
 
 
+def readings_figure(readings, device_names):
+    """Temperature and moisture from GET /bins/{id}/records or /devices/{id}/records.
+
+    A bin can hold several sensors: each gets its own lines, or they would zigzag
+    between the two. device_names maps a device id to its name for the legend.
+    """
+    figure = go.Figure()
+    device_ids = list(dict.fromkeys(r["device_id"] for r in readings))
+    for number, device_id in enumerate(device_ids):
+        rows = [r for r in readings if r["device_id"] == device_id]
+        suffix = f" · {device_names.get(device_id) or 'Sensor'}" if len(device_ids) > 1 else ""
+        for name, key, color, unit in (
+            ("Temperature", "temperature", SENSOR_COLORS["temperature"], "°C"),
+            ("Moisture", "moisture_percent", SENSOR_COLORS["moisture"], "%"),
+        ):
+            figure.add_trace(
+                go.Scatter(
+                    x=[r["timestamp"] for r in rows],
+                    y=[r[key] for r in rows],
+                    name=name + suffix,
+                    mode="lines",
+                    # the second sensor's lines are dotted
+                    line={"color": color, "width": 2, "dash": "dot" if number else "solid"},
+                    hovertemplate=f"%{{y:.1f}}{unit}<extra>{name + suffix}</extra>",
+                )
+            )
+    if not readings:
+        figure.add_annotation(text="No readings in this period", showarrow=False, xref="paper", yref="paper", x=0.5, y=0.5)
+    figure.update_layout(height=280, hovermode="x unified", legend={"orientation": "h", "x": 0, "y": 1.14})
+    return figure
+
+
 def phase_history_figure():
     color = SENSOR_COLORS["temperature"]
     figure = go.Figure(
