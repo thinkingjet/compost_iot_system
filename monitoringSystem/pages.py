@@ -243,6 +243,36 @@ def settings_panel(kind):
     return dmc.Card(dmc.SimpleGrid([general, info], cols={"base": 1, "md": 2}, spacing="xl"), padding="lg")
 
 
+def bin_settings_panel(bin_data):
+    form = dmc.Stack(
+        [
+            _card_title("General", "Bin settings", "Update how this compost batch appears across CompostIQ."),
+            dmc.SimpleGrid(
+                [
+                    dmc.TextInput(id="bin-name", label="Name", value=bin_data["name"]),
+                    dmc.TextInput(id="bin-location", label="Location", value=bin_data["location"]),
+                    dmc.Select(id="bin-country", label="Country", data=COUNTRIES, value=bin_data["country_code"],
+                               searchable=True, allowDeselect=False),
+                ],
+                cols={"base": 1, "sm": 2},
+            ),
+            dmc.Group(button("Save changes", component_id="save-bin-settings"), justify="flex-end"),
+        ]
+    )
+    delete = dmc.Stack(
+        [
+            _card_title("Danger zone", "Delete bin", "Removes the bin and all its readings. Its devices will need setting up again."),
+            # asks "are you sure?" in the browser; the callback only runs on OK
+            dcc.ConfirmDialogProvider(
+                button("Delete bin", "light", color="red"),
+                id="delete-bin",
+                message="Delete this bin and all its readings? This can't be undone.",
+            ),
+        ]
+    )
+    return dmc.Card(dmc.SimpleGrid([form, delete], cols={"base": 1, "md": 2}, spacing="xl"), padding="lg")
+
+
 def detail_page(kind, item_id, tab):
     is_bin = kind == "bin"
     valid = {"live", "history", "settings"} | ({"maintenance", "devices"} if is_bin else set())
@@ -285,7 +315,7 @@ def bin_detail_page(bin_id, tab):
     if tab == "history":
         panel = history_panel()
     elif tab == "settings":
-        panel = settings_panel("bin")
+        panel = bin_settings_panel(bin_data)
     elif tab == "maintenance":
         panel = maintenance_panel()
     elif tab == "devices":

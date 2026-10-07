@@ -934,13 +934,61 @@ def create_bin(n_clicks, name, country):
     return toast(f"{name} created (preview only, not saved yet).", title="Bin created"), "/bins"
 
 
+# ------------------------------------------------------------ bin settings ---
+
+@callback(
+    Output("redirect", "data", allow_duplicate=True),
+    Output("notify", "sendNotifications", allow_duplicate=True),
+    Output("page-root", "children", allow_duplicate=True),
+    Input("save-bin-settings", "n_clicks"),
+    State("bin-name", "value"),
+    State("bin-location", "value"),
+    State("bin-country", "value"),
+    State("url", "pathname"),
+    running=[(Output("save-bin-settings", "loading"), True, False)],
+    prevent_initial_call=True,
+)
+def save_bin_settings(n_clicks, name, location, country, pathname):
+    if not n_clicks:
+        return no_update, no_update, no_update
+    bin_id = _detail_route(pathname)[1]
+    try:
+        api_client.update_bin(bin_id, name=name, location=location or "", country_code=country)
+    except NotAuthenticated:
+        return *_session_ended(pathname), no_update
+    except ApiError:
+        return no_update, toast("Give the bin a name (up to 80 characters).", "red"), no_update
+    except ApiUnavailable:
+        return no_update, toast(API_DOWN, "red"), no_update
+    # redraw the page so the header shows the new name too
+    return no_update, toast("Bin settings saved."), bin_detail_page(bin_id, "settings")
+
+
+@callback(
+    Output("redirect", "data", allow_duplicate=True),
+    Output("notify", "sendNotifications", allow_duplicate=True),
+    Input("delete-bin", "submit_n_clicks"),
+    State("url", "pathname"),
+    prevent_initial_call=True,
+)
+def delete_bin(confirmed, pathname):
+    if not confirmed:
+        return no_update, no_update
+    try:
+        api_client.delete_bin(_detail_route(pathname)[1])
+    except NotAuthenticated:
+        return _session_ended(pathname)
+    except (ApiError, ApiUnavailable) as error:
+        return no_update, toast(_api_problem(error), "red")
+    return goto("/bins"), toast("Bin deleted.")
+
+
 # ------------------------------------------------------- placeholder toasts ---
 
 PLACEHOLDER_TOASTS = {
     "export-report": "Report export prepared",
     "review-alerts": "All alerts marked as reviewed",
     "refresh-predictions": "Predictions refreshed",
-    "save-bin-settings": "Bin settings saved",
     "save-device-settings": "Device settings saved",
     "notification-button": "No new notifications",
 }
