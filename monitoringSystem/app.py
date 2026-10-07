@@ -38,6 +38,7 @@ from figures import readings_figure
 from pages import (
     account_page,
     add_device_page,
+    alerts_grid,
     bin_detail_page,
     bins_page,
     dashboard_page,
@@ -946,6 +947,17 @@ def create_bin(n_clicks, name, country):
     if not (name and country):
         return toast("A bin needs a name and a country.", "red"), no_update
     return toast(f"{name} created (preview only, not saved yet).", title="Bin created"), "/bins"
+
+
+# ------------------------------------------------------------- home alerts ---
+
+@callback(Output("home-alerts", "children"), Input("alerts-poll", "n_intervals"), prevent_initial_call=True)
+def refresh_alerts(_):
+    try:
+        return alerts_grid(api_client.list_alerts())
+    except (NotAuthenticated, ApiError, ApiUnavailable):
+        # keep what's shown; the next page load deals with the problem
+        return no_update
 
 
 # ------------------------------------------------------------ bin settings ---

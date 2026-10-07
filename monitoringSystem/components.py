@@ -281,11 +281,13 @@ def paired_device_card(device):
 
 
 def alert_card(kind, title, detail, priority):
-    color = "red" if kind == "hot" else "blue"
+    """kind is an alert type from GET /alerts: too_hot, too_dry, too_wet or offline."""
+    color = {"too_hot": "red", "offline": "gray"}.get(kind, "blue")
+    icon_name = {"too_hot": "temperature", "offline": "device"}.get(kind, "droplet")
     return dmc.Card(
         dmc.Group(
             [
-                dmc.ThemeIcon(icon("temperature" if kind == "hot" else "droplet", 18), color=color, variant="light", size="lg"),
+                dmc.ThemeIcon(icon(icon_name, 18), color=color, variant="light", size="lg"),
                 dmc.Stack([dmc.Text(title, fw=600, size="sm"), dmc.Text(detail, size="sm", c="dimmed")], gap=2, flex=1),
                 dmc.Badge(priority, color=color, variant="light"),
             ],

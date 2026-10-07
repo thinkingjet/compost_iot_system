@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import dash_mantine_components as dmc
 from dash import dcc
 
@@ -43,26 +45,65 @@ def _card_title(eyebrow, title, subtitle=None):
 
 # --------------------------------------------------------------- overview ---
 
+# what each alert type from GET /alerts means, and what to do about it
+ALERT_TEXT = {
+    "too_hot": ("Temperature is too high", "Turn the pile to cool it"),
+    "too_dry": ("Moisture is too low", "Add water"),
+    "too_wet": ("Moisture is too high", "Turn it and add dry material"),
+    "offline": ("Sensor offline", "Check its power and Wi-Fi"),
+}
+
+
+def alerts_grid(alerts):
+    if not alerts:
+        return dmc.Text("Nothing needs attention right now.", c="dimmed", size="sm")
+    cards = []
+    for alert in alerts:
+        title, action = ALERT_TEXT.get(alert["type"], (alert["type"], ""))
+        where = alert["bin_name"] if alert["type"] != "offline" else f"{alert['bin_name']} · {alert['device_name'] or 'Sensor'}"
+        detail = f"{where} · {action} · started {time_ago(alert['triggered_at'])}"
+        cards.append(alert_card(alert["type"], title, detail, alert["severity"].title()))
+    return dmc.SimpleGrid(cards, cols={"base": 1, "md": 2})
+
+
+def bin_cards(bins, devices):
+    """One card per bin, each given the devices that are in it."""
+    return [user_bin_card(b, [d for d in devices if d["bin"] and d["bin"]["id"] == b["id"]]) for b in bins]
+
+
 def dashboard_page(user):
-    alerts = dmc.SimpleGrid(
-        [
-            alert_card("hot", "Temperature is running high", "Bin 1 · Turn compost within 2 hours", "High"),
-            alert_card("dry", "Moisture is trending low", "Primary School · Add approximately 3L water", "Medium"),
-        ],
-        cols={"base": 1, "md": 2},
+    now = datetime.now()
+    header = page_header(
+        f"{now:%A} · {now.day} {now:%B}",
+        f"Welcome back, {user_name(user)}",
+        "Here’s what’s happening across your compost system.",
+        linked_button("Pair a device", "/devices/add", icon_name="link"),
     )
+    try:
+        bins = api_client.list_bins()
+        devices = api_client.list_devices()
+        alerts = api_client.list_alerts()
+    except NotAuthenticated:
+        return dmc.Stack([header, dmc.Alert("Your session has ended. Please sign in again.", color="yellow")])
+    except (ApiError, ApiUnavailable):
+        return dmc.Stack([header, dmc.Alert("Can’t load your compost system right now. Try again in a moment.", color="red")])
+
     return dmc.Stack(
         [
-            page_header(
-                "Monday · 8 September",
-                f"Welcome back, {user_name(user)}",
-                "Here’s what’s happening across your compost system.",
-                linked_button("Pair a device", "/devices/add", icon_name="link"),
-            ),
+            header,
             dmc.SimpleGrid([metric_card(metric) for metric in METRICS], cols={"base": 1, "sm": 2, "lg": 4}),
-            dmc.Box([section_header("Needs attention", "Review all", action_id="review-alerts"), alerts]),
-            dmc.Box([section_header("Compost bins", "View all", "/bins"), dmc.SimpleGrid([bin_card(item) for item in BINS], cols=CARD_GRID)]),
-            dmc.Box([section_header("Devices", "View all", "/devices"), dmc.SimpleGrid([device_card(item) for item in DEVICES], cols=CARD_GRID)]),
+            dmc.Box(
+                [
+                    section_header("Needs attention"),
+                    dmc.Box(alerts_grid(alerts), id="home-alerts"),
+                    # asks the API again every minute, so new problems show up without a reload
+                    dcc.Interval(id="alerts-poll", interval=60_000),
+                ]
+            ),
+            dmc.Box([section_header("Compost bins", "View all", "/bins"),
+                     dmc.SimpleGrid(bin_cards(bins, devices), cols=CARD_GRID) if bins else dmc.Text("No bins yet.", c="dimmed", size="sm")]),
+            dmc.Box([section_header("Devices", "View all", "/devices"),
+                     dmc.SimpleGrid([paired_device_card(d) for d in devices], cols=CARD_GRID) if devices else dmc.Text("No devices yet.", c="dimmed", size="sm")]),
         ],
         gap="xl",
     )
@@ -84,9 +125,7 @@ def bins_page():
         return dmc.Box([header, dmc.Alert("Something went wrong. Please try again in a bit.", color="red")])
     if not user_bins:
         return dmc.Box([header, dmc.Text("You do not have any added bins yet.")])
-    # each card gets the devices that are in its bin
-    cards = [user_bin_card(b, [d for d in devices if d["bin"] and d["bin"]["id"] == b["id"]]) for b in user_bins]
-    return dmc.Box([header, dmc.SimpleGrid(cards, cols=CARD_GRID)])
+    return dmc.Box([header, dmc.SimpleGrid(bin_cards(user_bins, devices), cols=CARD_GRID)])
 
 
 def devices_page():
