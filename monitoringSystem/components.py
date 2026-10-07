@@ -229,7 +229,7 @@ def device_card(device):
 
 
 # a device that checked in this recently counts as online
-ONLINE_WITHIN = timedelta(minutes=5)
+ONLINE_WITHIN = timedelta(minutes=10)
 
 
 def time_ago(iso):
