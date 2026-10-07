@@ -137,3 +137,42 @@ def list_bins():
 def create_bin(name, country_code, location=""):
     body = {"name": name, "location": location or "", "country_code": country_code}
     return _request("POST", "/bins", json=body)
+
+
+def get_bin(bin_id):
+    return _request("GET", f"/bins/{bin_id}")
+
+
+def update_bin(bin_id, name=None, location=None, country_code=None):
+    body = {"name": name, "location": location, "country_code": country_code}
+    return _request("PATCH", f"/bins/{bin_id}", json={key: value for key, value in body.items() if value is not None})
+
+
+def delete_bin(bin_id):
+    return _request("DELETE", f"/bins/{bin_id}")
+
+
+def get_bin_records(bin_id, hours=24):
+    return _request("GET", f"/bins/{bin_id}/records?hours={hours}")
+
+
+def get_bin_history(bin_id, days=30):
+    return _request("GET", f"/bins/{bin_id}/history?days={days}")
+
+
+def update_device(device_id, name=None, bin_id=None):
+    body = {"name": name, "bin_id": bin_id}
+    return _request("PATCH", f"/devices/{device_id}", json={key: value for key, value in body.items() if value is not None})
+
+
+def get_device_records(device_id, hours=24):
+    return _request("GET", f"/devices/{device_id}/records?hours={hours}")
+
+
+# ------------------------------------------------------------------ alerts ---
+
+def list_alerts(bin_id=None, include_resolved=False):
+    path = f"/alerts?include_resolved={str(include_resolved).lower()}"
+    if bin_id:
+        path += f"&bin_id={bin_id}"
+    return _request("GET", path)

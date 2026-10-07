@@ -120,8 +120,9 @@ def metric_card(metric):
                 align="baseline",
                 mt="xs",
             ),
-            dmc.Text([dmc.Text(metric["delta"], span=True, fw=600, c=color), " · last 24 hours"], size="xs", c="dimmed"),
-            plot(sparkline(metric["values"], metric["color"]), static=True),
+            dmc.Text(metric["delta"], fw=600, c=color, size="xs"),
+            # only cards with readings behind them get a line
+            plot(sparkline(metric["values"], metric["color"]), static=True) if metric["values"] else None,
         ],
         padding="md",
     )
@@ -169,6 +170,43 @@ def bin_card(bin_data):
     )
     return _card_link(card, "/bin/live")
 
+def user_bin_card(bin_data, devices):
+    """A real bin from GET /bins, with the devices from GET /devices that are in it."""
+    count = f"{len(devices)} device" if len(devices) == 1 else f"{len(devices)} devices"
+    if not devices:
+        status = dmc.Badge("No devices", color="gray", variant="light", size="sm")
+    elif any(is_online(device) for device in devices):
+        status = online_badge()
+    else:
+        status = dmc.Badge("Offline", color="gray", variant="dot", size="sm")
+    card = dmc.Card(
+        [
+            dmc.CardSection(
+                [
+                    dmc.Group(
+                        [
+                            dmc.Stack(
+                                [
+                                    dmc.Text(bin_data["name"], fw=600),
+                                    dmc.Text(" · ".join(part for part in (bin_data["location"], count) if part), size="xs", c="dimmed"),
+                                ],
+                                gap=0,
+                            ),
+                            dmc.ThemeIcon(icon("bin", 16), variant="light", size="md"),
+                        ],
+                        justify="space-between",
+                        align="flex-start",
+                    ),
+                ],
+                p="md",
+                withBorder=True,
+            ),
+            dmc.Group(status, mt="md"),
+        ],
+        padding="md",
+    )
+    return _card_link(card, f"/bin/{bin_data['id']}/live")
+
 
 def device_card(device):
     card = dmc.Card(
@@ -191,7 +229,7 @@ def device_card(device):
 
 
 # a device that checked in this recently counts as online
-ONLINE_WITHIN = timedelta(minutes=5)
+ONLINE_WITHIN = timedelta(minutes=10)
 
 
 def time_ago(iso):
@@ -206,11 +244,15 @@ def time_ago(iso):
     return datetime.fromisoformat(iso).strftime("%d %b %Y")
 
 
+def is_online(device):
+    seen = device.get("last_seen_at")
+    return bool(seen) and datetime.now(timezone.utc) - datetime.fromisoformat(seen) < ONLINE_WITHIN
+
+
 def _device_status(device):
     if not device["set_up"]:
         return dmc.Badge("Needs setup", color="yellow", variant="light", size="sm")
-    seen = device.get("last_seen_at")
-    if seen and datetime.now(timezone.utc) - datetime.fromisoformat(seen) < ONLINE_WITHIN:
+    if is_online(device):
         return online_badge()
     return dmc.Badge("Offline", color="gray", variant="dot", size="sm")
 
@@ -224,7 +266,7 @@ def paired_device_card(device):
         if not device["set_up"]
         else dmc.Text(f"Last seen {time_ago(seen)}" if seen else "No readings yet", size="sm", c="dimmed")
     )
-    return dmc.Card(
+    card = dmc.Card(
         [
             dmc.Group([dmc.ThemeIcon(icon("device", 18), variant="light", size="lg"), _device_status(device)], justify="space-between"),
             dmc.Text(device["name"] or "New device", fw=600, size="lg", mt="md"),
@@ -234,14 +276,19 @@ def paired_device_card(device):
         ],
         padding="md",
     )
+    # a device still being set up has a "Finish setup" button instead, and a
+    # card can't be a link with a button inside it
+    return _card_link(card, f"/device/{device['id']}/live") if device["set_up"] else card
 
 
 def alert_card(kind, title, detail, priority):
-    color = "red" if kind == "hot" else "blue"
+    """kind is an alert type from GET /alerts: too_hot, too_dry, too_wet or offline."""
+    color = {"too_hot": "red", "offline": "gray"}.get(kind, "blue")
+    icon_name = {"too_hot": "temperature", "offline": "device"}.get(kind, "droplet")
     return dmc.Card(
         dmc.Group(
             [
-                dmc.ThemeIcon(icon("temperature" if kind == "hot" else "droplet", 18), color=color, variant="light", size="lg"),
+                dmc.ThemeIcon(icon(icon_name, 18), color=color, variant="light", size="lg"),
                 dmc.Stack([dmc.Text(title, fw=600, size="sm"), dmc.Text(detail, size="sm", c="dimmed")], gap=2, flex=1),
                 dmc.Badge(priority, color=color, variant="light"),
             ],
