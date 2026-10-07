@@ -1043,7 +1043,6 @@ def save_device_settings(n_clicks, name, bin_id, pathname):
 PLACEHOLDER_TOASTS = {
     "export-report": "Report export prepared",
     "review-alerts": "All alerts marked as reviewed",
-    "refresh-predictions": "Predictions refreshed",
     "notification-button": "No new notifications",
 }
 

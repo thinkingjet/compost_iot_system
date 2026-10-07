@@ -251,25 +251,17 @@ def live_panel(kind, readings, device_names):
 
 
 def maintenance_panel():
-    timeline = dmc.Timeline(
+    # needs the prediction model (D6); until then, say so instead of made-up tasks
+    return dmc.Card(
         [
-            dmc.TimelineItem(
-                [dmc.Text(task["detail"], size="sm", c="dimmed"), dmc.Text(task["time"], size="xs", c="dimmed", mt=4)],
-                title=task["title"],
-                bullet=icon("check", 12),
-            )
-            for task in MAINTENANCE_TASKS
+            _card_title("Smart schedule", "Estimated next tasks"),
+            dmc.Text(
+                "MAYBE coming with the prediction model: it will suggest when to turn or water the pile, and when the compost will be ready.",
+                c="dimmed", size="sm", mt="md",
+            ),
         ],
-        active=0,
-        bulletSize=22,
-        lineWidth=2,
+        padding="md",
     )
-    header = dmc.Group(
-        [_card_title("Smart schedule", "Estimated next tasks"), button("Generate predictions", component_id="refresh-predictions")],
-        justify="space-between",
-        mb="md",
-    )
-    return dmc.Box([sensor_strip(), dmc.Card([header, timeline], padding="md")])
 
 
 def history_panel(history, subtitle=None):
