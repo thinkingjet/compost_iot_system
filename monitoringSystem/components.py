@@ -120,8 +120,9 @@ def metric_card(metric):
                 align="baseline",
                 mt="xs",
             ),
-            dmc.Text([dmc.Text(metric["delta"], span=True, fw=600, c=color), " · last 24 hours"], size="xs", c="dimmed"),
-            plot(sparkline(metric["values"], metric["color"]), static=True),
+            dmc.Text(metric["delta"], fw=600, c=color, size="xs"),
+            # only cards with readings behind them get a line
+            plot(sparkline(metric["values"], metric["color"]), static=True) if metric["values"] else None,
         ],
         padding="md",
     )
@@ -174,7 +175,7 @@ def user_bin_card(bin_data, devices):
     count = f"{len(devices)} device" if len(devices) == 1 else f"{len(devices)} devices"
     if not devices:
         status = dmc.Badge("No devices", color="gray", variant="light", size="sm")
-    elif any(_is_online(device) for device in devices):
+    elif any(is_online(device) for device in devices):
         status = online_badge()
     else:
         status = dmc.Badge("Offline", color="gray", variant="dot", size="sm")
@@ -243,7 +244,7 @@ def time_ago(iso):
     return datetime.fromisoformat(iso).strftime("%d %b %Y")
 
 
-def _is_online(device):
+def is_online(device):
     seen = device.get("last_seen_at")
     return bool(seen) and datetime.now(timezone.utc) - datetime.fromisoformat(seen) < ONLINE_WITHIN
 
@@ -251,7 +252,7 @@ def _is_online(device):
 def _device_status(device):
     if not device["set_up"]:
         return dmc.Badge("Needs setup", color="yellow", variant="light", size="sm")
-    if _is_online(device):
+    if is_online(device):
         return online_badge()
     return dmc.Badge("Offline", color="gray", variant="dot", size="sm")
 

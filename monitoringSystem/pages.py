@@ -11,6 +11,7 @@ from components import (
     button,
     detail_tabs,
     device_card,
+    is_online,
     linked_button,
     metric_card,
     page_header,
@@ -71,6 +72,29 @@ def bin_cards(bins, devices):
     return [user_bin_card(b, [d for d in devices if d["bin"] and d["bin"]["id"] == b["id"]]) for b in bins]
 
 
+def overview_cards(bins, devices, alerts, records):
+    """The four cards at the top of the home page. records maps a bin id to its last 24 h of readings."""
+    online = [d for d in devices if is_online(d)]
+    reporting = len({d["bin"]["id"] for d in online if d["bin"]})
+    needs_setup = sum(not d["set_up"] for d in devices)
+    high = sum(alert["severity"] == "high" for alert in alerts)
+    # the bin whose newest reading is the hottest
+    hottest = max((b for b in bins if records[b["id"]]), key=lambda b: records[b["id"]][-1]["temperature"], default=None)
+    temps = [r["temperature"] for r in records[hottest["id"]]] if hottest else []
+
+    metrics = [
+        {"label": "Bins", "value": str(len(bins)), "unit": "", "delta": f"{reporting} reporting",
+         "icon": "bin", "color": "health", "values": []},
+        {"label": "Devices", "value": f"{len(online)}/{len(devices)}", "unit": "online",
+         "delta": f"{needs_setup} need setup" if needs_setup else "All set up", "icon": "device", "color": "oxygen", "values": []},
+        {"label": "Alerts", "value": str(len(alerts)), "unit": "open",
+         "delta": f"{high} high priority" if alerts else "All clear", "icon": "alert", "color": "red" if high else "health", "values": []},
+        {"label": "Hottest bin", "value": f"{temps[-1]:.1f}" if temps else "–", "unit": "°C",
+         "delta": hottest["name"] if hottest else "No readings yet", "icon": "temperature", "color": "temperature", "values": temps},
+    ]
+    return dmc.SimpleGrid([metric_card(metric) for metric in metrics], cols={"base": 1, "sm": 2, "lg": 4})
+
+
 def dashboard_page(user):
     now = datetime.now()
     header = page_header(
@@ -83,6 +107,8 @@ def dashboard_page(user):
         bins = api_client.list_bins()
         devices = api_client.list_devices()
         alerts = api_client.list_alerts()
+        # one call per bin, for the "Hottest bin" card
+        records = {b["id"]: api_client.get_bin_records(b["id"]) for b in bins}
     except NotAuthenticated:
         return dmc.Stack([header, dmc.Alert("Your session has ended. Please sign in again.", color="yellow")])
     except (ApiError, ApiUnavailable):
@@ -91,7 +117,7 @@ def dashboard_page(user):
     return dmc.Stack(
         [
             header,
-            dmc.SimpleGrid([metric_card(metric) for metric in METRICS], cols={"base": 1, "sm": 2, "lg": 4}),
+            overview_cards(bins, devices, alerts, records),
             dmc.Box(
                 [
                     section_header("Needs attention"),
