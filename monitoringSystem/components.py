@@ -253,7 +253,7 @@ def paired_device_card(device):
         if not device["set_up"]
         else dmc.Text(f"Last seen {time_ago(seen)}" if seen else "No readings yet", size="sm", c="dimmed")
     )
-    return dmc.Card(
+    card = dmc.Card(
         [
             dmc.Group([dmc.ThemeIcon(icon("device", 18), variant="light", size="lg"), _device_status(device)], justify="space-between"),
             dmc.Text(device["name"] or "New device", fw=600, size="lg", mt="md"),
@@ -263,6 +263,9 @@ def paired_device_card(device):
         ],
         padding="md",
     )
+    # a device still being set up has a "Finish setup" button instead, and a
+    # card can't be a link with a button inside it
+    return _card_link(card, f"/device/{device['id']}/live") if device["set_up"] else card
 
 
 def alert_card(kind, title, detail, priority):

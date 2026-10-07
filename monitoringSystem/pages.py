@@ -212,6 +212,17 @@ def devices_panel():
     )
 
 
+def bin_devices_panel(bin_data, devices):
+    cards = [paired_device_card(device) for device in devices]
+    return dmc.Card(
+        [
+            dmc.Group([dmc.Title(f"Devices monitoring {bin_data['name']}", order=4), linked_button("Pair a device", "/devices/add", icon_name="link")], justify="space-between", mb="md"),
+            dmc.SimpleGrid(cards, cols={"base": 1, "sm": 2}) if cards else dmc.Text("No devices in this bin yet.", c="dimmed", size="sm"),
+        ],
+        padding="md",
+    )
+
+
 def _detail_row(label, value):
     return dmc.Group([dmc.Text(label, size="sm", c="dimmed"), dmc.Text(value, size="sm", fw=600)], justify="space-between")
 
@@ -329,8 +340,13 @@ def detail_page(kind, item_id, tab):
 
 
 def bin_detail_page(bin_id, tab):
+    if tab not in {"live", "maintenance", "history", "devices", "settings"}:
+        tab = "live"
+
     try:
         bin_data = api_client.get_bin(bin_id)
+        # the API lists all the user's devices; keep the ones in this bin
+        devices = [d for d in api_client.list_devices() if d["bin"] and d["bin"]["id"] == bin_id] if tab == "devices" else []
     except NotAuthenticated:
         return dmc.Alert("Your session has ended. Please sign in again.", color="yellow")
     except ApiError:
@@ -339,9 +355,6 @@ def bin_detail_page(bin_id, tab):
     except ApiUnavailable:
         return dmc.Alert("Can't load this bin right now.", color="red")
 
-    if tab not in {"live", "maintenance", "history", "devices", "settings"}:
-        tab = "live"
-
     if tab == "history":
         panel = history_panel()
     elif tab == "settings":
@@ -349,7 +362,7 @@ def bin_detail_page(bin_id, tab):
     elif tab == "maintenance":
         panel = maintenance_panel()
     elif tab == "devices":
-        panel = devices_panel()
+        panel = bin_devices_panel(bin_data, devices)
     else:
         panel = live_panel("bin")
 
