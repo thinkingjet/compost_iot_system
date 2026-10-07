@@ -983,13 +983,41 @@ def delete_bin(confirmed, pathname):
     return goto("/bins"), toast("Bin deleted.")
 
 
+# --------------------------------------------------------- device settings ---
+
+@callback(
+    Output("redirect", "data", allow_duplicate=True),
+    Output("notify", "sendNotifications", allow_duplicate=True),
+    Output("page-root", "children", allow_duplicate=True),
+    Input("save-device-settings", "n_clicks"),
+    State("device-name", "value"),
+    State("device-bin", "value"),
+    State("url", "pathname"),
+    running=[(Output("save-device-settings", "loading"), True, False)],
+    prevent_initial_call=True,
+)
+def save_device_settings(n_clicks, name, bin_id, pathname):
+    if not n_clicks:
+        return no_update, no_update, no_update
+    device_id = _detail_route(pathname)[1]
+    try:
+        api_client.update_device(device_id, name=name, bin_id=bin_id)
+    except NotAuthenticated:
+        return *_session_ended(pathname), no_update
+    except ApiError:
+        return no_update, toast("Give the device a name (up to 80 characters).", "red"), no_update
+    except ApiUnavailable:
+        return no_update, toast(API_DOWN, "red"), no_update
+    # redraw the page so the header shows the new name and bin too
+    return no_update, toast("Device settings saved."), device_detail_page(device_id, "settings")
+
+
 # ------------------------------------------------------- placeholder toasts ---
 
 PLACEHOLDER_TOASTS = {
     "export-report": "Report export prepared",
     "review-alerts": "All alerts marked as reviewed",
     "refresh-predictions": "Predictions refreshed",
-    "save-device-settings": "Device settings saved",
     "notification-button": "No new notifications",
 }
 

@@ -15,6 +15,7 @@ from components import (
     paired_device_card,
     plot,
     section_header,
+    time_ago,
     user_bin_card,
     user_name,
 )
@@ -273,6 +274,35 @@ def bin_settings_panel(bin_data):
     return dmc.Card(dmc.SimpleGrid([form, delete], cols={"base": 1, "md": 2}, spacing="xl"), padding="lg")
 
 
+def device_settings_panel(device, bins):
+    form = dmc.Stack(
+        [
+            _card_title("General", "Device settings", "Rename this sensor or move it to another bin."),
+            dmc.SimpleGrid(
+                [
+                    dmc.TextInput(id="device-name", label="Name", value=device["name"]),
+                    dmc.Select(id="device-bin", label="Bin", data=[{"value": b["id"], "label": b["name"]} for b in bins],
+                               value=device["bin"]["id"] if device["bin"] else None, allowDeselect=False),
+                ],
+                cols={"base": 1, "sm": 2},
+            ),
+            dmc.Group(button("Save changes", component_id="save-device-settings"), justify="flex-end"),
+        ]
+    )
+    details = dmc.Stack(
+        [
+            _card_title("System information", "Device details"),
+            _detail_row("Hardware ID", device["hardware_id"]),
+            _detail_row("Model", device["model"] or "Unknown"),
+            _detail_row("Firmware", device["firmware_version"] or "Unknown"),
+            _detail_row("Paired", time_ago(device["paired_at"]) if device["paired_at"] else "Unknown"),
+            _detail_row("Last seen", time_ago(device["last_seen_at"]) if device["last_seen_at"] else "No readings yet"),
+        ],
+        gap="xs",
+    )
+    return dmc.Card(dmc.SimpleGrid([form, details], cols={"base": 1, "md": 2}, spacing="xl"), padding="lg")
+
+
 def detail_page(kind, item_id, tab):
     is_bin = kind == "bin"
     valid = {"live", "history", "settings"} | ({"maintenance", "devices"} if is_bin else set())
@@ -328,8 +358,13 @@ def bin_detail_page(bin_id, tab):
 
 
 def device_detail_page(device_id, tab):
+    if tab not in {"live", "history", "settings"}:
+        tab = "live"
+
     try:
         device = api_client.get_device(device_id)
+        # the settings form lets the user pick another of their bins
+        bins = api_client.list_bins() if tab == "settings" else []
     except NotAuthenticated:
         return dmc.Alert("Your session has ended. Please sign in again.", color="yellow")
     except ApiError:
@@ -337,13 +372,10 @@ def device_detail_page(device_id, tab):
     except ApiUnavailable:
         return dmc.Alert("Can't load this device right now.", color="red")
 
-    if tab not in {"live", "history", "settings"}:
-        tab = "live"
-
     if tab == "history":
         panel = history_panel()
     elif tab == "settings":
-        panel = settings_panel("device")
+        panel = device_settings_panel(device, bins)
     else:
         panel = live_panel("device")
 
