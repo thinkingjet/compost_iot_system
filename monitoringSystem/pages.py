@@ -273,8 +273,14 @@ def bin_detail_page(bin_id, tab):
         bin_data = api_client.get_bin(bin_id)
     except NotAuthenticated:
         return dmc.Alert("Your session has ended. Please sign in again.", color="yellow")
-    except (ApiError, ApiUnavailable):
+    except ApiError:
+        # 404 or a malformed id: the bin isn't there (or isn't the user's)
+        return dmc.Alert("This bin doesn't exist.", color="yellow")
+    except ApiUnavailable:
         return dmc.Alert("Can't load this bin right now.", color="red")
+
+    if tab not in {"live", "maintenance", "history", "devices", "settings"}:
+        tab = "live"
 
     if tab == "history":
         panel = history_panel()
@@ -296,8 +302,13 @@ def device_detail_page(device_id, tab):
         device = api_client.get_device(device_id)
     except NotAuthenticated:
         return dmc.Alert("Your session has ended. Please sign in again.", color="yellow")
-    except (ApiError, ApiUnavailable):
+    except ApiError:
+        return dmc.Alert("This device doesn't exist.", color="yellow")
+    except ApiUnavailable:
         return dmc.Alert("Can't load this device right now.", color="red")
+
+    if tab not in {"live", "history", "settings"}:
+        tab = "live"
 
     if tab == "history":
         panel = history_panel()
