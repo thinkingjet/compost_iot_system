@@ -28,7 +28,7 @@ from data import (
     METRICS,
     TELEMETRY,
 )
-from figures import health_figure, phase_history_figure, readings_figure, sparkline
+from figures import phase_history_figure, readings_figure, sparkline
 from theme import icon
 
 CARD_GRID = {"base": 1, "sm": 2, "lg": 3}
@@ -204,22 +204,20 @@ def maintenance_panel():
     return dmc.Box([sensor_strip(), dmc.Card([header, timeline], padding="md")])
 
 
-def history_panel():
-    def chart_card(eyebrow, title, figure):
-        return dmc.Card(
-            [dmc.Group([_card_title(eyebrow, title), dmc.Badge("Last 36 days", variant="light", color="gray")], justify="space-between", mb="sm"), plot(figure)],
-            padding="md",
-        )
-
-    return dmc.Box(
+def history_panel(history, subtitle=None):
+    temperature = dmc.Card(
         [
-            sensor_strip(),
-            dmc.SimpleGrid(
-                [chart_card("Phase analysis", "Temperature over time", phase_history_figure()), chart_card("Quality score", "Compost health", health_figure())],
-                cols={"base": 1, "md": 2},
-            ),
-        ]
+            dmc.Group([_card_title("Phase analysis", "Temperature over time", subtitle), dmc.Badge("Last 30 days", variant="light", color="gray")], justify="space-between", mb="sm"),
+            plot(phase_history_figure(history)),
+        ],
+        padding="md",
     )
+    # needs the prediction model (D6); until then, say so instead of a made-up score
+    health = dmc.Card(
+        [_card_title("Quality score", "Compost health"), dmc.Text("Coming with the prediction model.", c="dimmed", size="sm", mt="md")],
+        padding="md",
+    )
+    return dmc.SimpleGrid([temperature, health], cols={"base": 1, "md": 2})
 
 
 def devices_panel():
@@ -343,7 +341,7 @@ def detail_page(kind, item_id, tab):
         # old mock route (/bin/live): no bin to read from, so an empty chart
         panel = live_panel(kind, [], {})
     elif tab == "history":
-        panel = history_panel()
+        panel = history_panel([])
     elif tab == "settings":
         panel = settings_panel(kind)
     elif tab == "maintenance":
@@ -368,6 +366,7 @@ def bin_detail_page(bin_id, tab):
         bin_data = api_client.get_bin(bin_id)
         all_devices = api_client.list_devices() if tab in ("devices", "live") else []
         readings = api_client.get_bin_records(bin_id) if tab == "live" else []
+        history = api_client.get_bin_history(bin_id) if tab == "history" else []
     except NotAuthenticated:
         return dmc.Alert("Your session has ended. Please sign in again.", color="yellow")
     except ApiError:
@@ -377,7 +376,7 @@ def bin_detail_page(bin_id, tab):
         return dmc.Alert("Can't load this bin right now.", color="red")
 
     if tab == "history":
-        panel = history_panel()
+        panel = history_panel(history)
     elif tab == "settings":
         panel = bin_settings_panel(bin_data)
     elif tab == "maintenance":
@@ -401,6 +400,8 @@ def device_detail_page(device_id, tab):
         # the settings form lets the user pick another of their bins
         bins = api_client.list_bins() if tab == "settings" else []
         readings = api_client.get_device_records(device_id) if tab == "live" else []
+        # history is kept per bin, so the device page shows the bin it's in
+        history = api_client.get_bin_history(device["bin"]["id"]) if tab == "history" and device["bin"] else []
     except NotAuthenticated:
         return dmc.Alert("Your session has ended. Please sign in again.", color="yellow")
     except ApiError:
@@ -409,7 +410,8 @@ def device_detail_page(device_id, tab):
         return dmc.Alert("Can't load this device right now.", color="red")
 
     if tab == "history":
-        panel = history_panel()
+        bin_name = device["bin"]["name"] if device["bin"] else None
+        panel = history_panel(history, f"For the whole of {bin_name}, all its sensors" if bin_name else "Not in a bin yet")
     elif tab == "settings":
         panel = device_settings_panel(device, bins)
     else:

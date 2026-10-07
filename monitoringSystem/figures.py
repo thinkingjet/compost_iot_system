@@ -95,22 +95,34 @@ def readings_figure(readings, device_names):
     return figure
 
 
-def phase_history_figure():
+def phase_history_figure(history):
+    """Daily average and peak temperature from GET /bins/{id}/history."""
     color = SENSOR_COLORS["temperature"]
+    days = [day["day"] for day in history]
     figure = go.Figure(
-        go.Scatter(
-            x=HISTORICAL["dates"],
-            y=HISTORICAL["temperature"],
-            mode="lines",
-            name="Temperature",
-            line={"color": color, "width": 2, "shape": "spline"},
-            fill="tozeroy",
-            fillcolor=rgba(color, 0.12),
-            hovertemplate="%{x}<br>%{y:.1f}°C<extra></extra>",
-        )
+        [
+            go.Scatter(
+                x=days,
+                y=[day["avg_temp"] for day in history],
+                mode="lines+markers",
+                name="Daily average",
+                line={"color": color, "width": 2},
+                fill="tozeroy",
+                fillcolor=rgba(color, 0.12),
+                hovertemplate="%{x}<br>%{y:.1f}°C<extra>Average</extra>",
+            ),
+            go.Scatter(
+                x=days,
+                y=[day["max_temp"] for day in history],
+                mode="lines",
+                name="Daily peak",
+                line={"color": color, "width": 1.5, "dash": "dot"},
+                hovertemplate="%{x}<br>%{y:.1f}°C<extra>Peak</extra>",
+            ),
+        ]
     )
-    figure.add_vrect(x0="Day 1", x1="Day 7", fillcolor=rgba("#FCC419", 0.12), line_width=0, layer="below")
-    figure.add_vrect(x0="Day 8", x1="Day 26", fillcolor=rgba(SENSOR_COLORS["health"], 0.10), line_width=0, layer="below")
+    if not history:
+        figure.add_annotation(text="No readings in this period", showarrow=False, xref="paper", yref="paper", x=0.5, y=0.5)
     figure.add_hline(
         y=PATHOGEN_KILL_TEMP,
         line={"color": "#fa5252", "dash": "dot", "width": 1},
@@ -118,7 +130,7 @@ def phase_history_figure():
         annotation_position="top left",
         annotation_font={"color": "#fa5252", "size": 10},
     )
-    figure.update_layout(height=260, showlegend=False)
+    figure.update_layout(height=260, legend={"orientation": "h", "x": 0, "y": 1.14})
     return figure
 
 
