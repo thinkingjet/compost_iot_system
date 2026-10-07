@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ page_title }}</title>
+<meta name="description" content="{{ description }}">
+<link rel="canonical" href="{{ site_url }}{{ path }}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CompostIQ">
+<meta property="og:title" content="{{ page_title }}">
+<meta property="og:description" content="{{ description }}">
+<meta property="og:url" content="{{ site_url }}{{ path }}">
+<meta name="theme-color" content="#3D6B09">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700..800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/assets/site.css?v={{ asset_version }}">
+<script src="/assets/site.js?v={{ asset_version }}" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+<div class="wrap{% if section == 'docs' %} wrap--wide{% endif %} site-header__row">
+<a class="brand" href="/" aria-label="CompostIQ home">
+<span class="brand__mark">{{ icon('leaf') }}</span>
+<span>Compost<span class="brand__accent">IQ</span>{% if section == 'docs' %} <span class="brand__suffix">docs</span>{% endif %}</span>
+</a>
+<nav class="site-nav" aria-label="Main">
+{% for item in nav %}
+<a href="{{ item.href }}"{% if item.key == section %} aria-current="true"{% endif %}>{{ item.label }}</a>
+{% endfor %}
+</nav>
+<div class="site-header__cta">
+<a class="btn btn--ghost hide-sm" href="{{ dashboard_url }}/login">Sign in</a>
+<a class="btn btn--primary" href="{{ dashboard_url }}/register">Create account</a>
+</div>
+</div>
+</header>
+
+{% block body %}{% endblock %}
+
+{% block footer %}
+<footer class="site-footer">
+<div class="wrap">
+<div class="footer-top">
+<div class="footer-brand">
+<span class="footer-brand__name">Compost<span>IQ</span></span>
+<p>Sensors, alerts and open data for better compost.</p>
+</div>
+<nav class="footer-col" aria-label="Product">
+<span class="footer-col__title">Product</span>
+<a href="/#how">How it works</a>
+<a href="{{ dashboard_url }}/login">Sign in</a>
+<a href="{{ dashboard_url }}/register">Create an account</a>
+</nav>
+<nav class="footer-col" aria-label="Research">
+<span class="footer-col__title">Research</span>
+<a href="/open-data/">Open data</a>
+<a href="/open-data/#downloads">Download CSV</a>
+</nav>
+<nav class="footer-col" aria-label="Docs">
+<span class="footer-col__title">Docs</span>
+<a href="/docs/">Quickstart</a>
+<a href="/docs/api/">API reference</a>
+<a href="/docs/security/">Pairing &amp; security</a>
+</nav>
+</div>
+<div class="footer-bottom">
+<span>© {{ year }} CompostIQ · An RMIT capstone project</span>
+<span>Open data licence: [LICENCE]</span>
+</div>
+</div>
+</footer>
+{% endblock %}
+</body>
+</html>
