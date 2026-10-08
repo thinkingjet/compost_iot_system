@@ -645,64 +645,6 @@ def new_bin_page():
 
 # ------------------------------------------------------------ public pages ---
 
-def _how_it_works_step(number, icon_name, title, text):
-    return dmc.Card(
-        [
-            dmc.Group([dmc.ThemeIcon(icon(icon_name, 20), variant="light", size="xl"), dmc.Text(f"Step {number}", size="xs", fw=700, tt="uppercase", c="dimmed")], gap="sm"),
-            dmc.Title(title, order=4, mt="md"),
-            dmc.Text(text, size="sm", c="dimmed", mt=4),
-        ],
-        padding="lg",
-    )
-
-
-def landing_page(signed_in):
-    """The public landing page. A placeholder hero for now: the global
-    statistics and the country map join it once the public API exists."""
-    if signed_in:
-        actions = [linked_button("Go to dashboard", "/dashboard", icon_name="arrow-right", size="md")]
-    else:
-        actions = [
-            linked_button("Create free account", "/register", size="md"),
-            linked_button("Sign in", "/login", "default", size="md"),
-        ]
-    hero = dmc.Stack(
-        [
-            dmc.Badge("Compost monitoring", variant="light", size="lg"),
-            dmc.Title("Better compost, backed by data.", order=1, ta="center", fz={"base": 34, "sm": 48}, lh=1.1),
-            dmc.Text(
-                "CompostIQ tracks temperature, moisture and oxygen inside your compost bins, "
-                "and tells you when to turn, water or leave the pile alone.",
-                c="dimmed",
-                size="lg",
-                ta="center",
-                maw=620,
-            ),
-            dmc.Group(actions, justify="center", mt="sm"),
-        ],
-        align="center",
-        gap="md",
-        py={"base": 48, "sm": 80},
-    )
-    steps = dmc.SimpleGrid(
-        [
-            _how_it_works_step(1, "plug", "Plug in", "Place a CompostIQ device in your bin and power it on."),
-            _how_it_works_step(2, "link", "Pair", "Enter the 6-digit code from the device to link it to your account."),
-            _how_it_works_step(3, "chart", "Watch", "Follow live readings, and get told when the pile needs attention."),
-        ],
-        cols={"base": 1, "sm": 3},
-    )
-    coming_soon = dmc.Alert(
-        "Global statistics and the map of bins by country will appear here.",
-        title="Community data is on its way",
-        icon=icon("map"),
-        variant="light",
-        color="gray",
-        mt="xl",
-    )
-    return dmc.Box([hero, dmc.Title("How it works", order=3, mb="sm"), steps, coming_soon])
-
-
 def not_found_page(signed_in):
     home = linked_button("Go to dashboard", "/dashboard") if signed_in else linked_button("Back to home", "/")
     return dmc.Stack(

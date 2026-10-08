@@ -43,7 +43,7 @@ module.exports = {
       script: path.join(VENV_BIN, "gunicorn"),
       args: "app:server --bind 127.0.0.1:8050 --workers 2 --timeout 60",
       interpreter: "none",
-      env: pick(["API_URL", "DASHBOARD_SECRET_KEY"]),
+      env: pick(["API_URL", "DASHBOARD_SECRET_KEY", "WEBSITE_URL"]),
       autorestart: true,
       max_restarts: 10,
       restart_delay: 3000,

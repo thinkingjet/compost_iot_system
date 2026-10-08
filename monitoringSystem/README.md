@@ -16,11 +16,12 @@ cp monitoringSystem/.env.example monitoringSystem/.env  # then set DASHBOARD_SEC
 uv run python monitoringSystem/app.py
 ```
 
-Open `http://127.0.0.1:8050`, and create an account or sign in as the development user (see the [API README](../backendAPI/README.md)).
+Open `http://127.0.0.1:8050/login`, and create an account or sign in as the development user (see the [API README](../backendAPI/README.md)).
 
 | Variable | Notes |
 |---|---|
 | `API_URL` | where the dashboard's server reaches the API. Defaults to `http://127.0.0.1:8000` |
+| `WEBSITE_URL` | the public website, where `/` and signing out lead. Defaults to `https://compostiq.win`; locally `http://127.0.0.1:8070` |
 | `DASHBOARD_SECRET_KEY` | signs the session cookie |
 
 **If `DASHBOARD_SECRET_KEY` is missing:**
@@ -33,7 +34,7 @@ Open `http://127.0.0.1:8050`, and create an account or sign in as the developmen
 
 | Route | Access | Page |
 |---|---|---|
-| `/` | public | landing page. A signed-in user stays here and gets a "Go to dashboard" button |
+| `/` | public | no page of its own: redirects to `/dashboard` when signed in, otherwise to the public website (`WEBSITE_URL`, [website/](../website/README.md)) |
 | `/login`, `/register` | public | a signed-in user is sent on to `/dashboard` |
 | `/dashboard` | private | overview |
 | `/bins`, `/bins/new`, `/bin/<tab>` | private | bins |

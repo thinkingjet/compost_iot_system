@@ -3,8 +3,12 @@ CompostIQ monitoring dashboard.
 
 One MantineProvider and one AppShell (header + navbar) wrap the whole app;
 `render_page` swaps the page into `page-root` whenever the URL changes, and
-decides who may see it: the public pages (/, /login, /register) get the
+decides who may see it: the public pages (/login, /register) get the
 header only, everything else needs a sign-in and gets the navbar too.
+
+The landing page is not part of the dashboard: it is the static website in
+website/public, on compostiq.win. The dashboard's own "/" sends signed-out
+visitors there and signed-in users to /dashboard.
 
 Run it with:  python monitoringSystem/app.py
 """
@@ -18,6 +22,7 @@ from urllib.parse import parse_qs, urlencode
 import api_client
 import auth
 import dash_mantine_components as dmc
+import flask
 from api_client import ApiError, ApiUnavailable, NotAuthenticated
 from components import NAVBAR, app_shell, header_actions, navbar_account
 from dash import (
@@ -45,13 +50,12 @@ from pages import (
     detail_page,
     device_detail_page,
     devices_page,
-    landing_page,
     login_page,
     new_bin_page,
     not_found_page,
     register_page,
 )
-from settings import DASHBOARD_SECRET_KEY, SESSION_HOURS
+from settings import DASHBOARD_SECRET_KEY, SESSION_HOURS, WEBSITE_URL
 from theme import FONT_URL, THEME, figure_template, register_figure_templates
 
 logger = logging.getLogger("compostiq.dashboard")
@@ -101,6 +105,14 @@ def configure_session(flask_server):
 
 configure_session(server)
 
+
+@server.before_request
+def leave_for_the_website():
+    """Opening the dashboard's "/" directly: there is no landing page here."""
+    if flask.request.path == "/" and flask.request.method in ("GET", "HEAD"):
+        return flask.redirect(home())
+    return None
+
 app.layout = dmc.MantineProvider(
     # the "dmc" class maps Dash 4 core-component colours onto the Mantine
     # theme (see assets/styles.css); MantineProvider itself takes no class
@@ -120,8 +132,13 @@ app.layout = dmc.MantineProvider(
     theme=THEME,
 )
 
-PUBLIC_ROUTES = {"/", "/login", "/register"}
+PUBLIC_ROUTES = {"/login", "/register"}
 AFTER_SIGN_IN = "/dashboard"
+
+
+def home():
+    """Where "/" leads: the dashboard if signed in, else the public website."""
+    return AFTER_SIGN_IN if auth.is_signed_in() else WEBSITE_URL
 
 # private pages; the two in USER_PAGES are built from the signed-in user
 PRIVATE_ROUTES = {
@@ -151,7 +168,10 @@ def toast(message, color="compost", title=None):
 
 
 def goto(target):
-    """A value for the `redirect` store: a local path, with or without a query."""
+    """A value for the `redirect` store: a local path, with or without a
+    query, or a full URL (the public website), which loads as a new page."""
+    if target.startswith(("http://", "https://")):
+        return {"href": target, "at": time.time()}
     pathname, _, query = target.partition("?")
     # the timestamp makes every redirect a new value, even to the same place
     return {"pathname": pathname, "search": f"?{query}" if query else "", "at": time.time()}
@@ -224,12 +244,12 @@ def render_page(pathname):
     def public(page, signed_in):
         return page, header_actions(True, signed_in), None, {"public": True}, no_update, no_update
 
+    if pathname == "/":
+        # reached from inside the app: the logo, "Back to home", signing out
+        return redirect(home())
+
     if pathname in PUBLIC_ROUTES:
-        signed_in = auth.is_signed_in()
-        if pathname == "/":
-            # a signed-in user stays here; only the header button changes
-            return public(landing_page(signed_in), signed_in)
-        if signed_in:
+        if auth.is_signed_in():
             return redirect(AFTER_SIGN_IN)
         return public(login_page() if pathname == "/login" else register_page(), False)
 
@@ -264,7 +284,10 @@ def render_page(pathname):
 clientside_callback(
     """
     function (target) {
-        if (target) {
+        if (target && target.href) {
+            // leaving the dashboard, for the public website
+            window.location.replace(target.href);
+        } else if (target) {
             window.history.replaceState({}, "", target.pathname + target.search);
             window.dispatchEvent(new CustomEvent("_dashprivate_pushstate"));
         }

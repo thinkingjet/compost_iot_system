@@ -377,7 +377,7 @@ def header_actions(public, signed_in):
         return [linked_button("Go to dashboard", "/dashboard", slot="header")]
     return [
         linked_button("Sign in", "/login", "default", slot="header"),
-        # phones only have room for one button; the landing page repeats this one
+        # phones only have room for one button; the sign-in page links to sign-up
         linked_button("Create account", "/register", slot="header", visibleFrom="xs"),
     ]
 

@@ -1,11 +1,90 @@
-{% extends "_docs.html" %}
-{% set docs_current = 'readings' %}
-{% block main_class %} docs-main--api{% endblock %}
-{% block docs %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>List readings · CompostIQ API reference</title>
+<meta name="description" content="GET /research/readings: anonymised compost readings, one row per bin per hour, with filters and cursor paging.">
+<link rel="canonical" href="https://compostiq.win/docs/api/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CompostIQ">
+<meta property="og:title" content="List readings · CompostIQ API reference">
+<meta property="og:description" content="GET /research/readings: anonymised compost readings, one row per bin per hour, with filters and cursor paging.">
+<meta property="og:url" content="https://compostiq.win/docs/api/">
+<meta name="theme-color" content="#3D6B09">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700..800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/assets/site.css">
+<script src="/assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+<div class="wrap wrap--wide site-header__row">
+<a class="brand" href="/" aria-label="CompostIQ home">
+<span class="brand__mark"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 21c.5-4.5 2.5-8 7-10"/><path d="M9 18c6.218 0 10.5-3.288 11-12v-2h-4.014c-9 0-11.986 4-12 9c0 1 0 3 2 5h3z"/></svg></span>
+<span>Compost<span class="brand__accent">IQ</span> <span class="brand__suffix">docs</span></span>
+</a>
+<nav class="site-nav" aria-label="Main">
+<a href="/#how">How it works</a>
+<a href="/open-data/">Open data</a>
+<a href="/docs/" aria-current="true">Docs</a>
+</nav>
+<div class="site-header__cta">
+<a class="btn btn--ghost hide-sm" href="https://dashboard.compostiq.win/login">Sign in</a>
+<a class="btn btn--primary" href="https://dashboard.compostiq.win/register">Create account</a>
+</div>
+</div>
+</header>
+
+<div class="wrap wrap--wide docs-layout">
+
+<nav class="docs-mobile" aria-label="Documentation">
+<a href="/docs/">Quickstart</a>
+<a href="/docs/api/" aria-current="page">API reference</a>
+<a href="/open-data/#fields">Data dictionary</a>
+<a href="/docs/security/">Pairing &amp; security</a>
+</nav>
+
+<nav class="docs-side" aria-label="Documentation">
+<div>
+<h2>Get started</h2>
+<a href="/docs/">Quickstart</a>
+<a href="/open-data/#fields">Data dictionary</a>
+<a href="/docs/api/#errors">Rate limits &amp; errors</a>
+</div>
+<div>
+<h2>Public statistics</h2>
+<a href="/docs/api/#public-stats"><span class="verb">GET</span>/public/stats</a>
+<a href="/docs/api/#public-bins-by-country"><span class="verb">GET</span>/public/bins-by-country</a>
+<a href="/docs/api/#public-trends"><span class="verb">GET</span>/public/trends</a>
+</div>
+<div>
+<h2>Research data</h2>
+<a href="/docs/api/" aria-current="page"><span class="verb">GET</span>/research/readings</a>
+<a href="/docs/api/#research-bins"><span class="verb">GET</span>/research/bins</a>
+<a href="/docs/api/#research-stages"><span class="verb">GET</span>/research/stages</a>
+</div>
+<div>
+<h2>Devices &amp; accounts</h2>
+<a href="/docs/security/">Pairing &amp; security</a>
+</div>
+<div>
+<h2>Resources</h2>
+<a href="/open-data/#downloads">Bulk downloads</a>
+<a href="https://api.compostiq.win/openapi.json">OpenAPI spec (JSON)</a>
+<a href="/docs/api/#changelog">Changelog</a>
+</div>
+</nav>
+
+<main id="main" class="docs-main prose docs-main--api">
 <div class="docs-head">
 <nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a><span aria-hidden="true">/</span><span>API reference</span><span aria-hidden="true">/</span><span aria-current="page">Research data</span></nav>
 <h1 class="docs-title">List readings</h1>
-<div class="cluster"><span class="method">GET</span><span class="endpoint-url">{{ public_api_url }}/research/readings</span></div>
+<div class="cluster"><span class="method">GET</span><span class="endpoint-url">https://api.compostiq.win/research/readings</span></div>
 <p class="docs-lead">Anonymised readings, one row per bin per hour, oldest first. Filter by country, method, phase or time, and page through the results with a cursor.</p>
 <div class="cluster"><span class="tag tag--good">No key needed</span><span class="tag tag--neutral">60 requests / minute</span><span class="tag tag--neutral">Up to 5000 rows per page</span></div>
 </div>
@@ -62,14 +141,14 @@
 </div>
 <button type="button" class="copy" data-copy hidden>Copy</button>
 </div>
-<pre class="code" data-panel="curl">curl -G {{ public_api_url }}/research/readings \
+<pre class="code" data-panel="curl">curl -G https://api.compostiq.win/research/readings \
   -d method=takakura \
   -d from=2026-08-26T00:00:00Z \
   -d limit=2</pre>
 <pre class="code" data-panel="python" hidden><span class="t-kw">import</span> requests
 
 resp = requests.get(
-    <span class="t-s">"{{ public_api_url }}/research/readings"</span>,
+    <span class="t-s">"https://api.compostiq.win/research/readings"</span>,
     params={
         <span class="t-s">"method"</span>: <span class="t-s">"takakura"</span>,
         <span class="t-s">"from"</span>: <span class="t-s">"2026-08-26T00:00:00Z"</span>,
@@ -82,7 +161,7 @@ resp.raise_for_status()
     print(row[<span class="t-s">"recorded_at"</span>], row[<span class="t-s">"temperature_c"</span>])</pre>
 <pre class="code" data-panel="r" hidden><span class="t-kw">library</span>(httr2)
 
-resp &lt;- request(<span class="t-s">"{{ public_api_url }}/research/readings"</span>) |&gt;
+resp &lt;- request(<span class="t-s">"https://api.compostiq.win/research/readings"</span>) |&gt;
   req_url_query(
     method = <span class="t-s">"takakura"</span>,
     from = <span class="t-s">"2026-08-26T00:00:00Z"</span>,
@@ -99,7 +178,7 @@ head(readings[, c(<span class="t-s">"recorded_at"</span>, <span class="t-s">"tem
 <pre class="code">{
   <span class="t-k">"items"</span>: [
     {
-      <span class="t-k">"bin_ref"</span>: <span class="t-s">"{{ example_ref }}"</span>,
+      <span class="t-k">"bin_ref"</span>: <span class="t-s">"b_1d0ca7"</span>,
       <span class="t-k">"country"</span>: <span class="t-s">"ID"</span>,
       <span class="t-k">"method"</span>: <span class="t-s">"takakura"</span>,
       <span class="t-k">"recorded_at"</span>: <span class="t-s">"2026-08-26T00:00:00Z"</span>,
@@ -124,12 +203,12 @@ head(readings[, c(<span class="t-s">"recorded_at"</span>, <span class="t-s">"tem
 <section id="other-endpoints" class="stack">
 <h2 class="title-lg">Other endpoints</h2>
 <div class="tiles tiles--tight">
-<a id="public-stats" class="card card-link ep" href="{{ public_api_url }}/public/stats"><span class="mono"><span class="verb">GET</span> /public/stats</span><span>Totals: bins, countries, active devices, readings in the last 24 hours.</span></a>
-<a id="public-bins-by-country" class="card card-link ep" href="{{ public_api_url }}/public/bins-by-country"><span class="mono"><span class="verb">GET</span> /public/bins-by-country</span><span>Number of bins in each country.</span></a>
-<a id="public-trends" class="card card-link ep" href="{{ public_api_url }}/public/trends"><span class="mono"><span class="verb">GET</span> /public/trends</span><span>30-day daily means of temperature and moisture across all bins.</span></a>
-<a id="research-bins" class="card card-link ep" href="{{ public_api_url }}/research/bins"><span class="mono"><span class="verb">GET</span> /research/bins</span><span>One row per bin: reference, country, method, first and last reading.</span></a>
-<a id="research-stages" class="card card-link ep" href="{{ public_api_url }}/research/stages"><span class="mono"><span class="verb">GET</span> /research/stages</span><span>The phase ranges used to label every reading.</span></a>
-<a id="openapi" class="card card-link ep" href="{{ public_api_url }}/openapi.json"><span class="mono"><span class="verb">GET</span> /openapi.json</span><span>The machine-readable spec, for code generators and Postman.</span></a>
+<a id="public-stats" class="card card-link ep" href="https://api.compostiq.win/public/stats"><span class="mono"><span class="verb">GET</span> /public/stats</span><span>Totals: bins, countries, active devices, readings in the last 24 hours.</span></a>
+<a id="public-bins-by-country" class="card card-link ep" href="https://api.compostiq.win/public/bins-by-country"><span class="mono"><span class="verb">GET</span> /public/bins-by-country</span><span>Number of bins in each country.</span></a>
+<a id="public-trends" class="card card-link ep" href="https://api.compostiq.win/public/trends"><span class="mono"><span class="verb">GET</span> /public/trends</span><span>30-day daily means of temperature and moisture across all bins.</span></a>
+<a id="research-bins" class="card card-link ep" href="https://api.compostiq.win/research/bins"><span class="mono"><span class="verb">GET</span> /research/bins</span><span>One row per bin: reference, country, method, first and last reading.</span></a>
+<a id="research-stages" class="card card-link ep" href="https://api.compostiq.win/research/stages"><span class="mono"><span class="verb">GET</span> /research/stages</span><span>The phase ranges used to label every reading.</span></a>
+<a id="openapi" class="card card-link ep" href="https://api.compostiq.win/openapi.json"><span class="mono"><span class="verb">GET</span> /openapi.json</span><span>The machine-readable spec, for code generators and Postman.</span></a>
 </div>
 </section>
 
@@ -139,4 +218,15 @@ head(readings[, c(<span class="t-s">"recorded_at"</span>, <span class="t-s">"tem
 <div class="def"><span class="def__k def__k--narrow mono">[DATE] · v1</span><span class="def__v">First public release of the <code>/public</code> and <code>/research</code> endpoints.</span></div>
 </div>
 </section>
-{% endblock %}
+</main>
+
+</div>
+
+<footer class="site-footer site-footer--compact">
+<div class="wrap wrap--wide footer-bottom">
+<span>© 2026 CompostIQ · An RMIT capstone project</span>
+<span class="footer-links"><a href="/docs/security/">Pairing &amp; security</a><a href="/docs/api/#changelog">Changelog</a><a href="/open-data/">Open data</a></span>
+</div>
+</footer>
+</body>
+</html>

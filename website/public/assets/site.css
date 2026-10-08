@@ -383,6 +383,8 @@ strong { color: var(--ink); }
 .legend__swatch--temp { background: var(--temp); }
 .legend__swatch--moist { background: var(--moist-on-dark); }
 
+/* Holds its chart's shape while site.js fetches the figures, so nothing jumps. */
+.chart-slot { aspect-ratio: 660 / 230; }
 .chart { display: block; width: 100%; height: auto; overflow: visible; }
 .chart text { font: 12px var(--font-sans); fill: var(--on-dark-2); }
 .chart__grid { stroke: var(--earth-line); }
