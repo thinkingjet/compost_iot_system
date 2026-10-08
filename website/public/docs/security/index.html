@@ -1,6 +1,86 @@
-{% extends "_docs.html" %}
-{% set docs_current = 'security' %}
-{% block docs %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pairing &amp; security · CompostIQ docs</title>
+<meta name="description" content="How a device joins your account, the safeguards on pairing codes and device keys, and what to do if one is exposed.">
+<link rel="canonical" href="https://compostiq.win/docs/security/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CompostIQ">
+<meta property="og:title" content="Pairing &amp; security · CompostIQ docs">
+<meta property="og:description" content="How a device joins your account, the safeguards on pairing codes and device keys, and what to do if one is exposed.">
+<meta property="og:url" content="https://compostiq.win/docs/security/">
+<meta name="theme-color" content="#3D6B09">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700..800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/assets/site.css">
+<script src="/assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+<div class="wrap wrap--wide site-header__row">
+<a class="brand" href="/" aria-label="CompostIQ home">
+<span class="brand__mark"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 21c.5-4.5 2.5-8 7-10"/><path d="M9 18c6.218 0 10.5-3.288 11-12v-2h-4.014c-9 0-11.986 4-12 9c0 1 0 3 2 5h3z"/></svg></span>
+<span>Compost<span class="brand__accent">IQ</span> <span class="brand__suffix">docs</span></span>
+</a>
+<nav class="site-nav" aria-label="Main">
+<a href="/#how">How it works</a>
+<a href="/open-data/">Open data</a>
+<a href="/docs/" aria-current="true">Docs</a>
+</nav>
+<div class="site-header__cta">
+<a class="btn btn--ghost hide-sm" href="https://dashboard.compostiq.win/login">Sign in</a>
+<a class="btn btn--primary" href="https://dashboard.compostiq.win/register">Create account</a>
+</div>
+</div>
+</header>
+
+<div class="wrap wrap--wide docs-layout">
+
+<nav class="docs-mobile" aria-label="Documentation">
+<a href="/docs/">Quickstart</a>
+<a href="/docs/api/">API reference</a>
+<a href="/open-data/#fields">Data dictionary</a>
+<a href="/docs/security/" aria-current="page">Pairing &amp; security</a>
+</nav>
+
+<nav class="docs-side" aria-label="Documentation">
+<div>
+<h2>Get started</h2>
+<a href="/docs/">Quickstart</a>
+<a href="/open-data/#fields">Data dictionary</a>
+<a href="/docs/api/#errors">Rate limits &amp; errors</a>
+</div>
+<div>
+<h2>Public statistics</h2>
+<a href="/docs/api/#public-stats"><span class="verb">GET</span>/public/stats</a>
+<a href="/docs/api/#public-bins-by-country"><span class="verb">GET</span>/public/bins-by-country</a>
+<a href="/docs/api/#public-trends"><span class="verb">GET</span>/public/trends</a>
+</div>
+<div>
+<h2>Research data</h2>
+<a href="/docs/api/"><span class="verb">GET</span>/research/readings</a>
+<a href="/docs/api/#research-bins"><span class="verb">GET</span>/research/bins</a>
+<a href="/docs/api/#research-stages"><span class="verb">GET</span>/research/stages</a>
+</div>
+<div>
+<h2>Devices &amp; accounts</h2>
+<a href="/docs/security/" aria-current="page">Pairing &amp; security</a>
+</div>
+<div>
+<h2>Resources</h2>
+<a href="/open-data/#downloads">Bulk downloads</a>
+<a href="https://api.compostiq.win/openapi.json">OpenAPI spec (JSON)</a>
+<a href="/docs/api/#changelog">Changelog</a>
+</div>
+</nav>
+
+<main id="main" class="docs-main prose">
 <nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a><span aria-hidden="true">/</span><span>Devices &amp; accounts</span><span aria-hidden="true">/</span><span aria-current="page">Pairing &amp; security</span></nav>
 <h1 class="docs-title">Pairing &amp; security</h1>
 <p class="docs-lead">How a device joins your account, the safeguards on pairing codes and device keys, and what to do if one is exposed.</p>
@@ -42,7 +122,7 @@
 <li><span class="step-n">3</span><div class="steps-list__body"><span><span class="tag tag--good">Dashboard</span></span><p><strong>Check the hardware ID.</strong> The dashboard shows which device redeemed the code. Make sure it matches the ID on the device's page. <code>GET /pairing/codes/{code}</code></p></div></li>
 <li><span class="step-n">4</span><div class="steps-list__body"><span><span class="tag tag--good">Dashboard</span></span><p><strong>Confirm.</strong> Name the device and choose its bin. Until you do, its uploads are answered with <code>409</code>. <code>POST /devices/{id}/setup</code></p></div></li>
 </ol>
-<div class="callout">{{ icon('info') }}<p>If the hardware ID in step 3 isn't yours, don't confirm it. Remove the device and create a new code. An unconfirmed device can't add readings to your account.</p></div>
+<div class="callout"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0-18 0"/><path d="M12 9h.01"/><path d="M11 12h1v4h1"/></svg><p>If the hardware ID in step 3 isn't yours, don't confirm it. Remove the device and create a new code. An unconfirmed device can't add readings to your account.</p></div>
 </section>
 
 <section id="exposed" class="doc-section">
@@ -81,9 +161,8 @@
 <h2>Reporting a vulnerability</h2>
 <p>Email [SECURITY CONTACT EMAIL] with the steps to reproduce it. Please don't disclose it publicly until it has been fixed.</p>
 </section>
-{% endblock %}
+</main>
 
-{% block toc %}
 <nav class="docs-toc" aria-label="On this page">
 <span class="docs-toc__title">On this page</span>
 <a href="#codes">Pairing codes</a>
@@ -94,4 +173,13 @@
 <a href="#open-data">What the open data includes</a>
 <a href="#report">Reporting a vulnerability</a>
 </nav>
-{% endblock %}
+</div>
+
+<footer class="site-footer site-footer--compact">
+<div class="wrap wrap--wide footer-bottom">
+<span>© 2026 CompostIQ · An RMIT capstone project</span>
+<span class="footer-links"><a href="/docs/security/">Pairing &amp; security</a><a href="/docs/api/#changelog">Changelog</a><a href="/open-data/">Open data</a></span>
+</div>
+</footer>
+</body>
+</html>

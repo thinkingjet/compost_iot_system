@@ -4,7 +4,7 @@ Three sites share the VM:
 
 | Address | What | Served by |
 |---|---|---|
-| `compostiq.win` (and `www.`, which redirects) | The public website | NGINX, from the static files in `/var/www/compostiq/site` ([website/README.md](../../website/README.md)) |
+| `compostiq.win` (and `www.`, which redirects) | The public website | NGINX, straight from the repo's `website/public` through the `/var/www/compostiq` symlink ([website/README.md](../../website/README.md)) |
 | `dashboard.compostiq.win` | The dashboard | PM2 `compostiq-dashboard`, port 8050 |
 | `api.compostiq.win` | The API | PM2 `compostiq-api`, port 8000 |
 
@@ -24,6 +24,25 @@ sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t && sudo systemctl reload nginx
 sudo certbot renew --dry-run                        # confirm auto-renewal works
 ```
+
+The website also needs its folder linked into place once (details in [website/README.md](../../website/README.md)):
+
+```bash
+sudo ln -sfn "$(git rev-parse --show-toplevel)/website/public" /var/www/compostiq
+```
+
+### Adding compostiq.win to an existing certificate
+
+If the VM already has the certificate for the two subdomains, add the website's names to it. Check first that `compostiq.win` and `www.compostiq.win` resolve to the VM (`dig +short compostiq.win`), and that the config above is installed, since its port-80 block answers the challenge for all four names:
+
+```bash
+sudo certbot certonly --nginx --expand --cert-name dashboard.compostiq.win \
+    -d dashboard.compostiq.win -d api.compostiq.win -d compostiq.win -d www.compostiq.win
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot certificates                           # the cert should list all four names
+```
+
+The certificate keeps its name and path (`/etc/letsencrypt/live/dashboard.compostiq.win/`), so the config doesn't change.
 
 The apps must listen on `127.0.0.1` only, so the outside world reaches them through NGINX.
 
@@ -70,7 +89,7 @@ curl -I http://localhost            # expect HTTP 200 from the welcome page
 
 # 4. Certificate: skip certonly if one already exists for your domain
 sudo certbot certificates
-sudo certbot certonly --nginx -d dashboard.compostiq.win -d api.compostiq.win
+sudo certbot certonly --nginx -d dashboard.compostiq.win -d api.compostiq.win -d compostiq.win -d www.compostiq.win
 
 # 5. Install the site, then run the setup commands above from the cp step onward
 ```

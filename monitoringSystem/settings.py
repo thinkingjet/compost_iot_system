@@ -13,6 +13,9 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
 
 API_URL = os.environ.get("API_URL", "http://127.0.0.1:8000").rstrip("/")
+# the public website (website/public on compostiq.win, served by NGINX):
+# the dashboard's own "/" sends signed-out visitors there
+WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://compostiq.win").rstrip("/")
 # signs the session cookie; app.py decides what a missing key means
 DASHBOARD_SECRET_KEY = os.environ.get("DASHBOARD_SECRET_KEY")
 # how long the session cookie lasts - matches the API's 8-hour token
