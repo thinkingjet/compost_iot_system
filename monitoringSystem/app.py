@@ -117,7 +117,11 @@ app.layout = dmc.MantineProvider(
     # theme (see assets/styles.css); MantineProvider itself takes no class
     html.Div(
         [
-            dcc.Location(id="url", refresh=False),
+            # "callback-nav": when a callback moves it (navigate, the detail
+            # tabs), it announces the change like a link click does, so the
+            # navbar's NavLinks re-check which one is active. With False the
+            # address changes silently and the old link stays highlighted.
+            dcc.Location(id="url", refresh="callback-nav"),
             # where a callback wants the browser to go next
             dcc.Store(id="redirect"),
             # which shell is showing: {"public": bool}. Never holds the token.
@@ -1137,6 +1141,101 @@ def poll_registration(_ticks, state):
     if online is None:
         return reg_update()
     return reg_update(poll_off=True, done_title="Your device is online", done_text=online)
+
+
+# ------------------------------------------------------------- new API key ---
+#
+# The "New API key" button on a registered device's card (/devices) opens a
+# modal: confirm, then the new key, shown once. As in the registration
+# wizard, the key only sits in the modal's text and is emptied on the way
+# out. new-key-device holds {id, name}.
+
+NEW_KEY_OUTPUTS = {
+    "opened": Output("new-key-modal", "opened", allow_duplicate=True),
+    "device": Output("new-key-device", "data", allow_duplicate=True),
+    "warning": Output("new-key-warning", "children", allow_duplicate=True),
+    "ask_style": Output("new-key-ask", "style", allow_duplicate=True),
+    "show_style": Output("new-key-show", "style", allow_duplicate=True),
+    "key": Output("new-key-value", "children", allow_duplicate=True),
+    "redirect": Output("redirect", "data", allow_duplicate=True),
+    "notify": Output("notify", "sendNotifications", allow_duplicate=True),
+}
+
+
+def new_key_update(**values):
+    return {key: values.get(key, no_update) for key in NEW_KEY_OUTPUTS}
+
+
+def new_key_signed_out():
+    redirect, note = _session_ended("/devices")
+    return new_key_update(opened=False, key="", redirect=redirect, notify=note)
+
+
+def _device_gone(error):
+    if isinstance(error, ApiError) and error.status == 404:
+        return "That device isn’t on your account any more."
+    return _api_problem(error)
+
+
+@callback(
+    output=NEW_KEY_OUTPUTS,
+    inputs={"_clicks": Input({"type": "new-key", "device": ALL}, "n_clicks")},
+    prevent_initial_call=True,
+)
+def ask_new_key(_clicks):
+    # every card's button fires with n_clicks=0 when the page renders
+    if not ctx.triggered_id or not _clicked():
+        return new_key_update()
+    try:
+        device = api_client.get_device(ctx.triggered_id["device"])
+    except NotAuthenticated:
+        return new_key_signed_out()
+    except (ApiError, ApiUnavailable) as error:
+        return new_key_update(notify=toast(_device_gone(error), "red"))
+    name = device["name"] or "This device"
+    return new_key_update(
+        opened=True,
+        device={"id": device["id"], "name": name},
+        warning=f"{name}’s current key stops working straight away. It can’t send readings again until you put the new key on it.",
+        ask_style=SHOWN,
+        show_style=HIDDEN,
+        key="",
+    )
+
+
+@callback(
+    output=NEW_KEY_OUTPUTS,
+    inputs={"_clicks": Input("new-key-confirm", "n_clicks")},
+    state={"device": State("new-key-device", "data")},
+    running=[(Output("new-key-confirm", "loading"), True, False)],
+    prevent_initial_call=True,
+)
+def generate_new_key(_clicks, device):
+    if not _clicked() or not device:
+        return new_key_update()
+    try:
+        replaced = api_client.new_device_key(device["id"])
+    except NotAuthenticated:
+        return new_key_signed_out()
+    except (ApiError, ApiUnavailable) as error:
+        return new_key_update(notify=toast(_device_gone(error), "red"))
+    return new_key_update(
+        ask_style=HIDDEN,
+        show_style=SHOWN,
+        key=replaced["api_key"],
+        notify=toast(f"{device['name']}’s old key no longer works.", title="New key generated"),
+    )
+
+
+@callback(
+    output=NEW_KEY_OUTPUTS,
+    inputs={"_clicks": [Input("new-key-cancel", "n_clicks"), Input("new-key-saved", "n_clicks")]},
+    prevent_initial_call=True,
+)
+def close_new_key(_clicks):
+    if not _clicked():
+        return new_key_update()
+    return new_key_update(opened=False, device=None, key="")
 
 
 # ---------------------------------------------------------------- new bin ---

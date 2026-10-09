@@ -1,4 +1,6 @@
 """Registering a device without pairing: name + bin -> API key -> readings."""
+import secrets
+
 import pytest
 from sqlalchemy import text
 
@@ -17,7 +19,7 @@ def registered():
     yield device_ids
     with db_engine.begin() as db:
         for device_id in device_ids:
-            for table in ("records", "device_apikeys", "device_bin_assn"):
+            for table in ("records", "device_apikeys", "device_bin_assn", "setup_codes"):
                 db.execute(text(f"DELETE FROM {table} WHERE device_id = :d"), {"d": device_id})
             db.execute(text("DELETE FROM devices WHERE id = :d"), {"d": device_id})
 
@@ -115,3 +117,41 @@ def test_a_device_whose_bin_was_deleted_can_be_set_up_again(client, account, reg
     assert response.json()["set_up"] is True
     # the same key keeps working
     assert client.post("/records", json=[reading()], headers={"x-key": api_key}).status_code == 200
+
+
+# ---------------------------------------------------------------- new key ---
+
+def test_a_new_key_replaces_the_old_one(client, account, registered):
+    device, old_key = _register(client, account, registered)
+    response = client.post(f"/devices/{device['id']}/key", headers=account["headers"])
+    assert response.status_code == 201
+    body = response.json()
+    new_key = body["api_key"]
+    assert len(new_key) == 64 and new_key != old_key
+    assert body["device"]["id"] == device["id"]
+
+    assert client.post("/records", json=[reading()], headers={"x-key": old_key}).status_code == 401
+    assert client.post("/records", json=[reading()], headers={"x-key": new_key}).status_code == 200
+    # still in its bin, still set up: only the key changed
+    assert client.get(f"/devices/{device['id']}", headers=account["headers"]).json()["set_up"] is True
+
+
+def test_a_new_key_needs_the_owner(client, account, other_account, registered):
+    device, api_key = _register(client, account, registered)
+    assert client.post(f"/devices/{device['id']}/key").status_code == 401
+    assert client.post(f"/devices/{device['id']}/key", headers=other_account).status_code == 404
+    # the owner's key is untouched
+    assert client.post("/records", json=[reading()], headers={"x-key": api_key}).status_code == 200
+
+
+def test_a_paired_device_gets_no_new_key_here(client, account, registered):
+    code = client.post("/pairing/codes", headers=account["headers"]).json()["code"]
+    redeemed = client.post("/pairing/redeem", json={
+        "code": code, "device_uid": f"02:00:00:00:FD:{secrets.randbelow(256):02X}",
+    }).json()
+    registered.append(redeemed["device_id"])
+
+    response = client.post(f"/devices/{redeemed['device_id']}/key", headers=account["headers"])
+    assert response.status_code == 409
+    # the key it paired with is untouched: 409 (not set up yet), not 401 (unknown key)
+    assert client.post("/records", json=[reading()], headers={"x-key": redeemed["api_key"]}).status_code == 409

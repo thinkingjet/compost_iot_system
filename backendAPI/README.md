@@ -35,7 +35,7 @@ uv run uvicorn main:app --reload --port 8000
 | `main.py` | the app, `POST /records` and the device `x-key` authentication |
 | `routers/auth.py` | user accounts and the `current_user` dependency |
 | `routers/pairing.py` | pairing codes: issue, check, and redeem one for a device key |
-| `routers/devices.py` | the user's devices: register without pairing, list, set up (name + bin), unpair |
+| `routers/devices.py` | the user's devices: register without pairing, list, set up (name + bin), new key, unpair |
 | `routers/bins.py` | the user's bins: list, create |
 | `database.py` | the one SQLAlchemy engine everything shares |
 | `config.py` | settings, from the environment or `.env` |
@@ -92,6 +92,7 @@ If the hardware ID doesn't match, "That's not my device" calls `DELETE /devices/
 | GET | `/devices` | Bearer | | 200 list of devices | 401 |
 | GET | `/devices/{id}` | Bearer | | 200 device | 401 · 404 |
 | POST | `/devices/{id}/setup` | Bearer | `{name, bin_id}` | 200 device | 401 · 404 device or bin not the user's · 422 |
+| POST | `/devices/{id}/key` | Bearer | | 201 `{device, api_key}` | 401 · 404 · 409 a paired device |
 | DELETE | `/devices/{id}` | Bearer | | 204 | 401 · 404 |
 | GET | `/bins` | Bearer | | 200 list of bins | 401 |
 | POST | `/bins` | Bearer | `{name, location?, country_code}` | 201 bin | 401 · 422 |
@@ -109,6 +110,8 @@ If the hardware ID doesn't match, "That's not my device" calls `DELETE /devices/
 
 For hardware that can't run the pairing flow. `POST /devices` with a name and one of the user's bins creates the device, puts it in the bin and returns `{device, api_key}`. The key is in that response only; the dashboard shows it once for the user to copy onto the device, and never stores it. There is no code and no confirm step, and nothing is learnt from the hardware, so the device has no hardware ID (`devices.mac` is null, migration 004) and its readings are accepted straight away.
 
+A lost or leaked key is replaced with `POST /devices/{id}/key`: the old key stops working at once and the new one is returned, once, the same way. The dashboard offers this as **New API key** on the device's card. Only registered devices can do this (409 otherwise): a paired device has to receive its key itself, so it gets a new one by being paired again, which revokes the old one too.
+
 Everything else is shared with paired devices: `DELETE /devices/{id}` revokes the key, and if the device's bin is deleted it goes back to "not set up" (409 on `/records`) until `POST /devices/{id}/setup` gives it another bin. It keeps its key throughout.
 
 ## Tests
@@ -117,4 +120,4 @@ Everything else is shared with paired devices: `DELETE /devices/{id}` revokes th
 cd backendAPI && uv run pytest
 ```
 
-These are integration tests against the Compose database; if it is not running they are skipped with a hint. The auth tests register their own users (`pytest-…@example.com`) and remove everything they create. The pairing tests (`tests/test_pairing.py`) cover every step above, including expired, reused and guessed codes, another user's device or bin, re-pairing and unpairing, and remove their devices (`02:00:00:00:FD:…`) afterwards. The registration tests (`tests/test_registration.py`) cover registering, the key working at once, another user's bin, unpairing, and setting a device up again after its bin is deleted, and remove the devices they register.
+These are integration tests against the Compose database; if it is not running they are skipped with a hint. The auth tests register their own users (`pytest-…@example.com`) and remove everything they create. The pairing tests (`tests/test_pairing.py`) cover every step above, including expired, reused and guessed codes, another user's device or bin, re-pairing and unpairing, and remove their devices (`02:00:00:00:FD:…`) afterwards. The registration tests (`tests/test_registration.py`) cover registering, the key working at once, another user's bin, unpairing, setting a device up again after its bin is deleted, and replacing a key (and refusing to for a paired device), and remove the devices they register.

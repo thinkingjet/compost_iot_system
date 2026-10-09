@@ -39,7 +39,7 @@ Open `http://127.0.0.1:8050/login`, and create an account or sign in as the deve
 | `/login`, `/register` | public | a signed-in user is sent on to `/dashboard` |
 | `/dashboard` | private | overview |
 | `/bins`, `/bins/new`, `/bin/<tab>` | private | bins |
-| `/devices` | private | the user's devices from the API; unfinished ones are marked *Needs setup* |
+| `/devices` | private | the user's devices from the API; unfinished ones are marked *Needs setup*. A registered device's card has **New API key**: confirm, then the replacement key, shown once (the old one stops working) |
 | `/devices/add` | private | the pairing wizard: get a code → the device redeems it → confirm its hardware ID → name and bin → wait for the first reading. `?device=<id>` resumes setup for a device paired earlier |
 | `/devices/register` | private | registering without pairing: name and bin → the device's API key, shown once with the endpoint and an example → wait for the first reading. `?device=<id>` gives a registered device a new bin after its bin was deleted |
 | `/device/<tab>` | private | device detail (mock data) |

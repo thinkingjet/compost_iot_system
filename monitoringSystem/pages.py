@@ -85,15 +85,20 @@ def devices_page():
     header = page_header(
         "Hardware",
         "Devices",
-        "The CompostIQ devices paired with your account.",
+        "The CompostIQ devices on your account.",
         linked_button("Pair a device", "/devices/add", icon_name="link"),
     )
+
+    def page(content):
+        # the new-key modal is always there, so its callbacks always have their outputs
+        return dmc.Box([header, content, *_new_key_modal()])
+
     try:
         devices = api_client.list_devices()
     except NotAuthenticated:
-        return dmc.Box([header, dmc.Alert("Your session has ended. Sign in again to see your devices.", color="yellow")])
+        return page(dmc.Alert("Your session has ended. Sign in again to see your devices.", color="yellow"))
     except (ApiUnavailable, ApiError):
-        return dmc.Box([header, dmc.Alert("Can’t load your devices right now. Try again in a moment.", color="red")])
+        return page(dmc.Alert("Can’t load your devices right now. Try again in a moment.", color="red"))
 
     if not devices:
         empty = dmc.Card(
@@ -115,8 +120,51 @@ def devices_page():
             ),
             padding="lg",
         )
-        return dmc.Box([header, empty])
-    return dmc.Box([header, dmc.SimpleGrid([paired_device_card(device) for device in devices], cols=CARD_GRID)])
+        return page(empty)
+    return page(dmc.SimpleGrid([paired_device_card(device) for device in devices], cols=CARD_GRID))
+
+
+def _new_key_modal():
+    """A registered device's new key: confirm first, then the key, shown once.
+
+    Only its buttons close it, so a stray click outside can't lose the key.
+    """
+    ask = dmc.Stack(
+        [
+            dmc.Text(id="new-key-warning", size="sm"),
+            dmc.Group(
+                [
+                    button("Cancel", "default", component_id="new-key-cancel"),
+                    button("Generate new key", icon_name="key", component_id="new-key-confirm", color="red"),
+                ],
+                justify="flex-end",
+            ),
+        ],
+        id="new-key-ask",
+    )
+    show = dmc.Stack(
+        [
+            *_api_key_panel("new"),
+            dmc.Group([button("I’ve saved the key", icon_name="check", component_id="new-key-saved")], justify="flex-end"),
+        ],
+        id="new-key-show",
+        style=_hidden(True),
+    )
+    return [
+        # {id, name} of the device the modal is for - never its key
+        dcc.Store(id="new-key-device", data=None),
+        dmc.Modal(
+            [ask, show],
+            id="new-key-modal",
+            title="New API key",
+            size="lg",
+            centered=True,
+            opened=False,
+            closeOnClickOutside=False,
+            closeOnEscape=False,
+            withCloseButton=False,
+        ),
+    ]
 
 
 # ----------------------------------------------------------- detail pages ---
@@ -440,6 +488,43 @@ def _labelled(label, child):
     return dmc.Stack([dmc.Text(label, size="sm", fw=500), child], gap=4)
 
 
+def _api_key_panel(prefix):
+    """The one-time view of a device's API key: copy it, and how to use it.
+
+    Shared by the registration wizard and the new-key modal. A callback puts
+    the key into `{prefix}-key-value` and empties it again as the user moves on.
+    """
+    key_id = f"{prefix}-key-value"
+    return [
+        dmc.Alert(
+            "This is the only time the key is shown. Copy it onto your device now and keep it private: "
+            "anyone who has it can send readings to your bin.",
+            title="Save this key",
+            color="yellow",
+            variant="light",
+            icon=icon("alert-circle"),
+        ),
+        _labelled(
+            "API key",
+            dmc.Group(
+                [
+                    dmc.Code(id=key_id, fz="sm", flex=1, style={"wordBreak": "break-all"}),
+                    dmc.CopyButton(target_id=key_id, children="Copy", copiedChildren="Copied", size="xs", variant="default"),
+                ],
+                wrap="nowrap",
+            ),
+        ),
+        _labelled("Endpoint", dmc.Code(f"POST {PUBLIC_API_URL}/records", w="fit-content")),
+        dmc.Text(
+            ["Send the key in the ", dmc.Code("x-key"), " header with every batch of readings. With the key in ",
+             dmc.Code("COMPOSTIQ_API_KEY"), ":"],
+            size="sm",
+        ),
+        dmc.Code(READINGS_EXAMPLE, block=True),
+        dmc.Text("The API answers 200 with the readings it stored, or 401 if the key is wrong or has been revoked.", size="xs", c="dimmed"),
+    ]
+
+
 def register_device_page():
     """Registering without pairing: name it and pick a bin, then copy its API key.
 
@@ -458,32 +543,7 @@ def register_device_page():
     )
     key_step = dmc.Stack(
         [
-            dmc.Alert(
-                "This is the only time the key is shown. Copy it onto your device now and keep it private: "
-                "anyone who has it can send readings to your bin.",
-                title="Save this key",
-                color="yellow",
-                variant="light",
-                icon=icon("alert-circle"),
-            ),
-            _labelled(
-                "API key",
-                dmc.Group(
-                    [
-                        dmc.Code(id="reg-key-value", fz="sm", flex=1, style={"wordBreak": "break-all"}),
-                        dmc.CopyButton(target_id="reg-key-value", children="Copy", copiedChildren="Copied", size="xs", variant="default"),
-                    ],
-                    wrap="nowrap",
-                ),
-            ),
-            _labelled("Endpoint", dmc.Code(f"POST {PUBLIC_API_URL}/records", w="fit-content")),
-            dmc.Text(
-                ["Send the key in the ", dmc.Code("x-key"), " header with every batch of readings. With the key in ",
-                 dmc.Code("COMPOSTIQ_API_KEY"), ":"],
-                size="sm",
-            ),
-            dmc.Code(READINGS_EXAMPLE, block=True),
-            dmc.Text("The API answers 200 with the readings it stored, or 401 if the key is wrong or has been revoked.", size="xs", c="dimmed"),
+            *_api_key_panel("reg"),
             dmc.Group([button("I’ve saved the key", icon_name="check", component_id="reg-saved")], justify="flex-end"),
         ],
         py="md",

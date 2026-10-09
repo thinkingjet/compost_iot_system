@@ -1,5 +1,5 @@
 """
-The signed-in user's devices: register, list, finish setting up, unpair.
+The signed-in user's devices: register, list, finish setting up, new key, unpair.
 
 A device joins an account in one of two ways:
 
@@ -10,7 +10,8 @@ A device joins an account in one of two ways:
   registration  POST /devices: the user names it and picks a bin in the
                 dashboard and gets its key back, once, to copy onto the device
                 by hand. It has no hardware ID, and its readings are accepted
-                straight away.
+                straight away. If the key is lost or leaked, POST
+                /devices/{id}/key swaps it for a new one.
 """
 import datetime
 import hashlib
@@ -72,7 +73,7 @@ class DeviceRegistration(BaseModel):
     bin_id: uuid.UUID
 
 
-class RegisteredDevice(BaseModel):
+class DeviceWithKey(BaseModel):
     device: Device
     # returned this once; only its hash is stored
     api_key: str
@@ -122,12 +123,17 @@ def issue_key(db, device_id):
     return api_key
 
 
-def release_device(db, device_id):
-    """Revoke its keys and take it out of its bin: it can no longer send readings."""
+def revoke_keys(db, device_id):
+    """Every key the device has stops working at once."""
     db.execute(
         text("UPDATE device_apikeys SET revoked_at = now() WHERE device_id = :id AND revoked_at IS NULL"),
         {"id": device_id},
     )
+
+
+def release_device(db, device_id):
+    """Revoke its keys and take it out of its bin: it can no longer send readings."""
+    revoke_keys(db, device_id)
     db.execute(
         text("UPDATE device_bin_assn SET unassigned_at = now() WHERE device_id = :id AND unassigned_at IS NULL"),
         {"id": device_id},
@@ -166,7 +172,7 @@ def list_devices(user=Depends(current_user)):
     return [device_out(row) for row in rows]
 
 
-@router.post("", status_code=201, response_model=RegisteredDevice)
+@router.post("", status_code=201, response_model=DeviceWithKey)
 def register_device(body: DeviceRegistration, user=Depends(current_user)):
     """Register a device without pairing: name it, put it in a bin, get its key.
 
@@ -189,7 +195,7 @@ def register_device(body: DeviceRegistration, user=Depends(current_user)):
         change_device(db, owned_device(db, device_id, user.id), user.id, bin_id=body.bin_id)
         api_key = issue_key(db, device_id)
         row = owned_device(db, device_id, user.id)
-    return RegisteredDevice(device=device_out(row), api_key=api_key)
+    return DeviceWithKey(device=device_out(row), api_key=api_key)
 
 
 @router.get("/{device_id}", response_model=Device)
@@ -211,6 +217,25 @@ def set_up_device(device_id: uuid.UUID, body: DeviceSetup, user=Depends(current_
         change_device(db, device, user.id, name=body.name, bin_id=body.bin_id)
         row = owned_device(db, device_id, user.id)
     return device_out(row)
+
+
+@router.post("/{device_id}/key", status_code=201, response_model=DeviceWithKey)
+def replace_key(device_id: uuid.UUID, user=Depends(current_user)):
+    """A new API key for a registered device; the old one stops working at once.
+
+    For a key that was lost or leaked. Registered devices only: a paired
+    device has to receive its key itself, so it gets a new one by being
+    paired again (which revokes the old one too).
+    """
+    with db_engine.begin() as db:
+        device = owned_device(db, device_id, user.id)
+        if device is None:
+            raise NOT_FOUND
+        if device.mac is not None:
+            raise HTTPException(status_code=409, detail="A paired device gets a new key by being paired again.")
+        revoke_keys(db, device_id)
+        api_key = issue_key(db, device_id)
+    return DeviceWithKey(device=device_out(device), api_key=api_key)
 
 
 @router.delete("/{device_id}", status_code=204)

@@ -227,10 +227,14 @@ def paired_device_card(device):
         if not device["set_up"]
         else dmc.Text(f"Last seen {time_ago(seen)}" if seen else "No readings yet", size="sm", c="dimmed")
     )
+    actions = [footer]
     if registered:
         # nothing was learnt from the hardware, so there is no model or hardware ID
         details = dmc.Text(where, size="sm", c="dimmed")
         identity = dmc.Badge("API key", leftSection=icon("key", 12), variant="light", color="gray", mt="xs")
+        # a lost or leaked key is swapped here; app.py's new-key modal does the rest
+        actions.append(button("New API key", "subtle", icon_name="key", size="xs",
+                              component_id={"type": "new-key", "device": device["id"]}))
     else:
         details = dmc.Text(f"{where} · {device['model'] or 'Unknown model'}", size="sm", c="dimmed")
         identity = dmc.Code(device["hardware_id"], mt="xs", w="fit-content")
@@ -240,7 +244,7 @@ def paired_device_card(device):
             dmc.Text(device["name"] or "New device", fw=600, size="lg", mt="md"),
             details,
             identity,
-            dmc.Group(footer, mt="md"),
+            dmc.Group(actions, justify="space-between", mt="md"),
         ],
         padding="md",
     )

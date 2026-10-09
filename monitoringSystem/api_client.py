@@ -128,6 +128,12 @@ def get_device(device_id):
     return _request("GET", f"/devices/{device_id}")
 
 
+def new_device_key(device_id):
+    """A registered device's new key, {device, api_key}; its old key stops
+    working at once. Shown to the user once, never kept."""
+    return _request("POST", f"/devices/{device_id}/key")
+
+
 def set_up_device(device_id, name, bin_id):
     return _request("POST", f"/devices/{device_id}/setup", json={"name": name, "bin_id": bin_id})
 
