@@ -3,6 +3,7 @@ import secrets
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from conftest import TEST_PASSWORD, reading
 from main import db_engine
@@ -144,14 +145,61 @@ def test_a_new_key_needs_the_owner(client, account, other_account, registered):
     assert client.post("/records", json=[reading()], headers={"x-key": api_key}).status_code == 200
 
 
-def test_a_paired_device_gets_no_new_key_here(client, account, registered):
+def _paired_and_set_up(client, account, registered):
+    """A device that joined by pairing, named and in a bin: (device_id, api_key)."""
     code = client.post("/pairing/codes", headers=account["headers"]).json()["code"]
     redeemed = client.post("/pairing/redeem", json={
         "code": code, "device_uid": f"02:00:00:00:FD:{secrets.randbelow(256):02X}",
     }).json()
     registered.append(redeemed["device_id"])
+    bin_id = _bin(client, account["headers"])["id"]
+    response = client.post(f"/devices/{redeemed['device_id']}/setup", headers=account["headers"],
+                           json={"name": "Paired sensor", "bin_id": bin_id})
+    assert response.status_code == 200, response.text
+    return redeemed["device_id"], redeemed["api_key"]
 
-    response = client.post(f"/devices/{redeemed['device_id']}/key", headers=account["headers"])
+
+def _live_keys(device_id):
+    with db_engine.connect() as db:
+        return db.execute(
+            text("SELECT count(*) FROM device_apikeys WHERE device_id = :d AND revoked_at IS NULL"), {"d": device_id}
+        ).scalar_one()
+
+
+def test_a_paired_device_gets_no_new_key(client, account, registered):
+    device_id, api_key = _paired_and_set_up(client, account, registered)
+    assert client.get(f"/devices/{device_id}", headers=account["headers"]).json()["registration"] == "pairing"
+
+    response = client.post(f"/devices/{device_id}/key", headers=account["headers"])
     assert response.status_code == 409
-    # the key it paired with is untouched: 409 (not set up yet), not 401 (unknown key)
-    assert client.post("/records", json=[reading()], headers={"x-key": redeemed["api_key"]}).status_code == 409
+    assert "api_key" not in response.json()
+    # nothing was revoked or added: the key it paired with is still its only one, and works
+    assert _live_keys(device_id) == 1
+    assert client.post("/records", json=[reading()], headers={"x-key": api_key}).status_code == 200
+
+
+def test_a_paired_device_cant_be_made_registered_through_the_api(client, account, registered):
+    device_id, _ = _paired_and_set_up(client, account, registered)
+    # the settings endpoint ignores fields it doesn't know
+    response = client.patch(f"/devices/{device_id}", headers=account["headers"],
+                            json={"name": "Renamed", "registration": "manual"})
+    assert response.status_code == 200
+    assert response.json()["registration"] == "pairing"
+    assert client.post(f"/devices/{device_id}/key", headers=account["headers"]).status_code == 409
+
+
+def test_the_database_keeps_registration_in_step_with_the_mac(client, account, registered):
+    device_id, _ = _paired_and_set_up(client, account, registered)
+    # a paired device (it has a MAC) can't be marked as registered...
+    with pytest.raises(IntegrityError):
+        with db_engine.begin() as db:
+            db.execute(text("UPDATE devices SET registration = 'manual' WHERE id = :d"), {"d": device_id})
+    # ...and a device without a MAC can't pass for a paired one
+    with pytest.raises(IntegrityError):
+        with db_engine.begin() as db:
+            db.execute(text("INSERT INTO devices (owner_id, registration) VALUES (:u, 'pairing')"),
+                       {"u": account["user"]["id"]})
+    registered_device, _ = _register(client, account, registered)
+    with pytest.raises(IntegrityError):
+        with db_engine.begin() as db:
+            db.execute(text("UPDATE devices SET registration = 'pairing' WHERE id = :d"), {"d": registered_device["id"]})

@@ -1208,9 +1208,16 @@ def new_key_signed_out(pathname):
     return new_key_update(opened=False, key="", redirect=redirect, notify=note)
 
 
+# only devices registered with an API key get a new key; the API enforces it
+# (409), and the dashboard never offers it for a paired device either
+PAIRED_NO_NEW_KEY = "Only devices registered with an API key can get a new key. To give a paired device a new key, pair it again."
+
+
 def _device_gone(error):
     if isinstance(error, ApiError) and error.status == 404:
         return "That device isn’t on your account any more."
+    if isinstance(error, ApiError) and error.status == 409:
+        return PAIRED_NO_NEW_KEY
     return _api_problem(error)
 
 
@@ -1230,6 +1237,9 @@ def ask_new_key(_clicks, pathname):
         return new_key_signed_out(pathname)
     except (ApiError, ApiUnavailable) as error:
         return new_key_update(notify=toast(_device_gone(error), "red"))
+    if device["registration"] != "manual":
+        # the settings tab only shows the button for registered devices
+        return new_key_update(notify=toast(PAIRED_NO_NEW_KEY, "red"))
     name = device["name"] or "This device"
     return new_key_update(
         opened=True,
@@ -1255,8 +1265,11 @@ def generate_new_key(_clicks, device, pathname):
         replaced = api_client.new_device_key(device["id"])
     except NotAuthenticated:
         return new_key_signed_out(pathname)
-    except (ApiError, ApiUnavailable) as error:
-        return new_key_update(notify=toast(_device_gone(error), "red"))
+    except ApiError as error:
+        # refused for good (gone, or not a registered device): close rather than offer a retry
+        return new_key_update(opened=False, device=None, key="", notify=toast(_device_gone(error), "red"))
+    except ApiUnavailable as error:
+        return new_key_update(notify=toast(_api_problem(error), "red"))
     return new_key_update(
         ask_style=HIDDEN,
         show_style=SHOWN,

@@ -19,7 +19,7 @@ PostgreSQL 16. Only the API (`backendAPI/`) connects to it. The dashboard and th
 | 001 | `CompostIQ_PostgreSQL_schema_fix1.sql` | Creates the tables | no |
 | 002 | `migrations/002_users_auth.sql` | `users.created_at`, `users.display_name`; emails unique without regard to case; `ON DELETE` rules for account deletion | yes: lower-cases `users.email` |
 | 003 | `migrations/003_device_pairing.sql` | Device pairing: `devices.name`, `model`, `firmware_version`, `paired_at`, `last_seen_at`; one row per hardware ID; `bins.country_code`; `setup_codes` gets its own `id` primary key so a code number can be reused; new `pairing_failures` table; unique indexes on key hashes and on a device's open bin assignment | yes: gives existing `setup_codes` rows an `id`. Fails if two devices share a MAC (any case) or a device has two open bin assignments; fix those by hand first |
-| 004 | `migrations/004_device_registration.sql` | Devices registered without pairing: `devices.mac` becomes optional, since nothing is learnt from the hardware | no |
+| 004 | `migrations/004_device_registration.sql` | Devices registered without pairing: `devices.mac` becomes optional, since nothing is learnt from the hardware; `devices.registration` (`pairing` or `manual`) records how a device joined, and checks keep it `manual` exactly when there is no MAC. Only `manual` devices may get a new API key | yes: fills in `registration` for existing devices from `mac` |
 
 Accounts that existed before 002 get the time the migration ran as their `created_at`, because their real sign-up time was never recorded.
 

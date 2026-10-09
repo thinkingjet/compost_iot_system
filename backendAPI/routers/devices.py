@@ -30,6 +30,10 @@ from routers.bins import owned_bin, READING_COLUMNS, Reading
 router = APIRouter(prefix="/devices", tags=["devices"])
 
 NOT_FOUND = HTTPException(status_code=404, detail="Device not found.")
+PAIRED_KEY_REFUSED = HTTPException(
+    status_code=409,
+    detail="Only a device registered with an API key can get a new key. A paired device gets one by being paired again.",
+)
 
 
 class BinRef(BaseModel):
@@ -41,7 +45,8 @@ class Device(BaseModel):
     id: uuid.UUID
     # the MAC it paired with; None for a registered device
     hardware_id: str | None
-    # how it joined the account (see the top of this file)
+    # how it joined the account (see the top of this file), stored when the
+    # device is created and never changed (migration 004)
     registration: Literal["pairing", "manual"]
     name: str | None
     model: str | None
@@ -80,7 +85,7 @@ class DeviceWithKey(BaseModel):
 
 
 DEVICE_SELECT = """
-    SELECT d.id, d.mac, d.name, d.model, d.firmware_version, d.paired_at, d.last_seen_at,
+    SELECT d.id, d.mac, d.registration, d.name, d.model, d.firmware_version, d.paired_at, d.last_seen_at,
            b.id AS bin_id, b.name AS bin_name
     FROM devices d
     LEFT JOIN device_bin_assn a ON a.device_id = d.id AND a.unassigned_at IS NULL
@@ -93,7 +98,7 @@ def device_out(row):
     return Device(
         id=row.id,
         hardware_id=row.mac,
-        registration="pairing" if row.mac else "manual",
+        registration=row.registration,
         name=row.name,
         model=row.model,
         firmware_version=row.firmware_version,
@@ -184,8 +189,8 @@ def register_device(body: DeviceRegistration, user=Depends(current_user)):
         device_id = db.execute(
             text(
                 """
-                INSERT INTO devices (owner_id, name, is_active, paired_at)
-                VALUES (:user_id, :name, true, now())
+                INSERT INTO devices (owner_id, name, registration, is_active, paired_at)
+                VALUES (:user_id, :name, 'manual', true, now())
                 RETURNING id
                 """
             ),
@@ -223,19 +228,26 @@ def set_up_device(device_id: uuid.UUID, body: DeviceSetup, user=Depends(current_
 def replace_key(device_id: uuid.UUID, user=Depends(current_user)):
     """A new API key for a registered device; the old one stops working at once.
 
-    For a key that was lost or leaked. Registered devices only: a paired
-    device has to receive its key itself, so it gets a new one by being
-    paired again (which revokes the old one too).
+    For a key that was lost or leaked. Registered devices only (409 for any
+    other): a paired device has to receive its key itself, so it gets a new
+    one by being paired again, which revokes the old one too.
     """
     with db_engine.begin() as db:
-        device = owned_device(db, device_id, user.id)
-        if device is None:
+        # the stored registration, not a guess from the MAC; the row stays
+        # locked until the swap commits, so two requests at once can't both
+        # leave a working key behind
+        registration = db.execute(
+            text("SELECT registration FROM devices WHERE id = :id AND owner_id = :user_id FOR UPDATE"),
+            {"id": device_id, "user_id": user.id},
+        ).scalar()
+        if registration is None:
             raise NOT_FOUND
-        if device.mac is not None:
-            raise HTTPException(status_code=409, detail="A paired device gets a new key by being paired again.")
+        if registration != "manual":
+            raise PAIRED_KEY_REFUSED
         revoke_keys(db, device_id)
         api_key = issue_key(db, device_id)
-    return DeviceWithKey(device=device_out(device), api_key=api_key)
+        row = owned_device(db, device_id, user.id)
+    return DeviceWithKey(device=device_out(row), api_key=api_key)
 
 
 @router.delete("/{device_id}", status_code=204)

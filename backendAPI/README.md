@@ -110,7 +110,13 @@ If the hardware ID doesn't match, "That's not my device" calls `DELETE /devices/
 
 For hardware that can't run the pairing flow. `POST /devices` with a name and one of the user's bins creates the device, puts it in the bin and returns `{device, api_key}`. The key is in that response only; the dashboard shows it once for the user to copy onto the device, and never stores it. There is no code and no confirm step, and nothing is learnt from the hardware, so the device has no hardware ID (`devices.mac` is null, migration 004) and its readings are accepted straight away.
 
-A lost or leaked key is replaced with `POST /devices/{id}/key`: the old key stops working at once and the new one is returned, once, the same way. The dashboard offers this as **New API key** on the device's settings tab. Only registered devices can do this (409 otherwise): a paired device has to receive its key itself, so it gets a new one by being paired again, which revokes the old one too.
+A lost or leaked key is replaced with `POST /devices/{id}/key`: the old key stops working at once and the new one is returned, once, the same way. The dashboard offers this as **New API key** on the device's settings tab.
+
+**Only registered devices can get a new key.** A paired device has to receive its key itself, so it gets a new one by being paired again, which revokes the old one too. This is enforced in three places:
+
+- **The database.** `devices.registration` (`pairing` or `manual`, migration 004) is set when the device is created and nothing changes it. Two checks keep it `manual` exactly when the device has no MAC, so a paired device can't be marked as registered by any code path.
+- **The API.** `POST /devices/{id}/key` reads that column, with the device row locked, and answers 409 for anything but `manual`, without revoking or adding a key. `PATCH /devices/{id}` ignores a `registration` field.
+- **The dashboard.** It only shows the button for registered devices, refuses to open the dialog for a paired one, and shows the API's 409 as a plain message.
 
 Everything else is shared with paired devices: `DELETE /devices/{id}` revokes the key, and if the device's bin is deleted it goes back to "not set up" (409 on `/records`) until `POST /devices/{id}/setup` gives it another bin. It keeps its key throughout.
 
@@ -120,4 +126,4 @@ Everything else is shared with paired devices: `DELETE /devices/{id}` revokes th
 cd backendAPI && uv run pytest
 ```
 
-These are integration tests against the Compose database; if it is not running they are skipped with a hint. The auth tests register their own users (`pytest-…@example.com`) and remove everything they create. The pairing tests (`tests/test_pairing.py`) cover every step above, including expired, reused and guessed codes, another user's device or bin, re-pairing and unpairing, and remove their devices (`02:00:00:00:FD:…`) afterwards. The registration tests (`tests/test_registration.py`) cover registering, the key working at once, another user's bin, unpairing, setting a device up again after its bin is deleted, and replacing a key (and refusing to for a paired device), and remove the devices they register.
+These are integration tests against the Compose database; if it is not running they are skipped with a hint. The auth tests register their own users (`pytest-…@example.com`) and remove everything they create. The pairing tests (`tests/test_pairing.py`) cover every step above, including expired, reused and guessed codes, another user's device or bin, re-pairing and unpairing, and remove their devices (`02:00:00:00:FD:…`) afterwards. The registration tests (`tests/test_registration.py`) cover registering, the key working at once, another user's bin, unpairing, setting a device up again after its bin is deleted, replacing a key, and the paired-device rules above (409 with nothing revoked, `registration` can't be changed through the API, the database checks reject a mismatched row), and remove the devices they register.
