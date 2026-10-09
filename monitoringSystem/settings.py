@@ -13,6 +13,9 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
 
 API_URL = os.environ.get("API_URL", "http://127.0.0.1:8000").rstrip("/")
+# where devices send their readings, shown with a registered device's API key.
+# Not API_URL: on the VM that is the loopback address only the dashboard uses
+PUBLIC_API_URL = os.environ.get("PUBLIC_API_URL", "https://api.compostiq.win").rstrip("/")
 # the public website (website/public on compostiq.win, served by NGINX):
 # the dashboard's own "/" sends signed-out visitors there
 WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://compostiq.win").rstrip("/")

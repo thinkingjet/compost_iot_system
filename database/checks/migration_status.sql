@@ -59,7 +59,11 @@ checks (migration, item, ok) AS (
         ('003', 'unique index on live setup codes',
             to_regclass('public.setup_codes_live_code_key') IS NOT NULL),
         ('003', 'table pairing_failures exists',
-            to_regclass('public.pairing_failures') IS NOT NULL)
+            to_regclass('public.pairing_failures') IS NOT NULL),
+
+        ('004', 'devices.mac is optional',
+            EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'devices' AND column_name = 'mac' AND is_nullable = 'YES'))
 )
 SELECT migration, item, CASE WHEN ok THEN 'applied' ELSE 'MISSING' END AS status
 FROM checks

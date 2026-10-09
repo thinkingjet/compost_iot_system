@@ -35,7 +35,7 @@ uv run uvicorn main:app --reload --port 8000
 | `main.py` | the app, `POST /records` and the device `x-key` authentication |
 | `routers/auth.py` | user accounts and the `current_user` dependency |
 | `routers/pairing.py` | pairing codes: issue, check, and redeem one for a device key |
-| `routers/devices.py` | the user's devices: list, set up (name + bin), unpair |
+| `routers/devices.py` | the user's devices: register without pairing, list, set up (name + bin), unpair |
 | `routers/bins.py` | the user's bins: list, create |
 | `database.py` | the one SQLAlchemy engine everything shares |
 | `config.py` | settings, from the environment or `.env` |
@@ -88,6 +88,7 @@ If the hardware ID doesn't match, "That's not my device" calls `DELETE /devices/
 | POST | `/pairing/codes` | Bearer | | 201 `{code, expires_at}` | 401 |
 | GET | `/pairing/codes/{code}` | Bearer | | 200 `{code, status, expires_at, device}` | 401 · 404 (not this user's code) |
 | POST | `/pairing/redeem` | the code | `{code, device_uid, model?, firmware_version?}` | 201 `{device_id, api_key}` | 404 unknown · 409 already used · 410 expired · 422 · 429 too many wrong codes |
+| POST | `/devices` | Bearer | `{name, bin_id}` | 201 `{device, api_key}` | 401 · 404 bin not the user's · 422 |
 | GET | `/devices` | Bearer | | 200 list of devices | 401 |
 | GET | `/devices/{id}` | Bearer | | 200 device | 401 · 404 |
 | POST | `/devices/{id}/setup` | Bearer | `{name, bin_id}` | 200 device | 401 · 404 device or bin not the user's · 422 |
@@ -95,14 +96,20 @@ If the hardware ID doesn't match, "That's not my device" calls `DELETE /devices/
 | GET | `/bins` | Bearer | | 200 list of bins | 401 |
 | POST | `/bins` | Bearer | `{name, location?, country_code}` | 201 bin | 401 · 422 |
 
-`status` is `pending`, `expired` or `redeemed`; once redeemed, `device` is the device that used it. A device is `{id, hardware_id, name, model, firmware_version, paired_at, last_seen_at, bin: {id, name} | null, set_up}`, where `set_up` means it has a name and a bin, so its readings are accepted.
+`status` is `pending`, `expired` or `redeemed`; once redeemed, `device` is the device that used it. A device is `{id, hardware_id, registration, name, model, firmware_version, paired_at, last_seen_at, bin: {id, name} | null, set_up}`, where `set_up` means it has a name and a bin, so its readings are accepted. `registration` is `pairing` or `manual` (below); a manual device's `hardware_id` is `null`.
 
 - **Codes** are 6 digits (leading zeros kept), valid for `PAIRING_CODE_MINUTES`, and used once. Only live codes have to be unique, so a number can come round again later. A user can hold up to 5 live codes; asking for more drops the oldest.
 - **Guessing is limited.** Every wrong, used or expired code sent to `/pairing/redeem` is counted per client IP in `pairing_failures`. After 10 in 15 minutes that IP gets 429 until the oldest fall out of the window. The count lives in the database because PM2 runs two API workers. NGINX also rate-limits `/pairing/` in production.
-- **Keys** are 64 hex characters from `secrets`. Only their SHA-256 hash is stored, as `/records` expects, and the key is only ever in the redeem response.
+- **Keys** are 64 hex characters from `secrets`. Only their SHA-256 hash is stored, as `/records` expects, and the key is only ever in the redeem (or register) response.
 - **Pairing hardware again** (after a factory reset, or passing the device on) reuses its `devices` row. Its old keys are revoked, and it leaves its bin and loses its name, so the new owner sets it up from scratch.
 - **Someone else's device or bin** is always a 404, never a 403.
 - `/records` also rejects a key whose device is inactive (unpaired), and records `last_seen_at` on every call, including the 409s before setup, so the dashboard can see a device is in contact.
+
+## Registering a device without pairing
+
+For hardware that can't run the pairing flow. `POST /devices` with a name and one of the user's bins creates the device, puts it in the bin and returns `{device, api_key}`. The key is in that response only; the dashboard shows it once for the user to copy onto the device, and never stores it. There is no code and no confirm step, and nothing is learnt from the hardware, so the device has no hardware ID (`devices.mac` is null, migration 004) and its readings are accepted straight away.
+
+Everything else is shared with paired devices: `DELETE /devices/{id}` revokes the key, and if the device's bin is deleted it goes back to "not set up" (409 on `/records`) until `POST /devices/{id}/setup` gives it another bin. It keeps its key throughout.
 
 ## Tests
 
@@ -110,4 +117,4 @@ If the hardware ID doesn't match, "That's not my device" calls `DELETE /devices/
 cd backendAPI && uv run pytest
 ```
 
-These are integration tests against the Compose database; if it is not running they are skipped with a hint. The auth tests register their own users (`pytest-…@example.com`) and remove everything they create. The pairing tests (`tests/test_pairing.py`) cover every step above, including expired, reused and guessed codes, another user's device or bin, re-pairing and unpairing, and remove their devices (`02:00:00:00:FD:…`) afterwards.
+These are integration tests against the Compose database; if it is not running they are skipped with a hint. The auth tests register their own users (`pytest-…@example.com`) and remove everything they create. The pairing tests (`tests/test_pairing.py`) cover every step above, including expired, reused and guessed codes, another user's device or bin, re-pairing and unpairing, and remove their devices (`02:00:00:00:FD:…`) afterwards. The registration tests (`tests/test_registration.py`) cover registering, the key working at once, another user's bin, unpairing, and setting a device up again after its bin is deleted, and remove the devices they register.

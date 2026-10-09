@@ -118,6 +118,12 @@ def list_devices():
     return _request("GET", "/devices")
 
 
+def register_device(name, bin_id):
+    """Register a device without pairing: {device, api_key}. The key comes back
+    this once - show it to the user and never keep it."""
+    return _request("POST", "/devices", json={"name": name, "bin_id": bin_id})
+
+
 def get_device(device_id):
     return _request("GET", f"/devices/{device_id}")
 

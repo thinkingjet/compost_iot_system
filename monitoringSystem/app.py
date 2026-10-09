@@ -41,6 +41,7 @@ from dash import (
 )
 from figures import telemetry_figure
 from pages import (
+    REGISTER_INTRO,
     account_page,
     add_device_page,
     bins_page,
@@ -50,6 +51,7 @@ from pages import (
     login_page,
     new_bin_page,
     not_found_page,
+    register_device_page,
     register_page,
 )
 from settings import DASHBOARD_SECRET_KEY, SESSION_HOURS, WEBSITE_URL
@@ -143,6 +145,7 @@ PRIVATE_ROUTES = {
     "/bins/new": new_bin_page,
     "/devices": devices_page,
     "/devices/add": add_device_page,
+    "/devices/register": register_device_page,
 }
 USER_PAGES = {
     "/dashboard": dashboard_page,
@@ -620,6 +623,100 @@ def delete_account(n_clicks, enter, password, pathname):
     return goto("/"), toast("Your account and its data have been deleted.", title="Account deleted"), None
 
 
+# ------------------------------------------------------- device setup form ---
+# The device name + bin fields (pages._device_setup_fields) that both the
+# pairing and the registration wizards end with. Their ids start "pair" / "reg".
+
+HIDDEN = {"display": "none"}
+SHOWN = {}
+SETUP_ERRORS = ("name_error", "bin_error", "new_name_error", "country_error")
+
+
+def _setup_error_outputs(prefix):
+    return {
+        "name_error": Output(f"{prefix}-device-name", "error"),
+        "bin_error": Output(f"{prefix}-bin", "error"),
+        "new_name_error": Output(f"{prefix}-new-bin-name", "error"),
+        "country_error": Output(f"{prefix}-new-bin-country", "error"),
+    }
+
+
+def _setup_states(prefix):
+    return {
+        "name": State(f"{prefix}-device-name", "value"),
+        "mode": State(f"{prefix}-bin-mode", "value"),
+        "bin_id": State(f"{prefix}-bin", "value"),
+        "new_name": State(f"{prefix}-new-bin-name", "value"),
+        "new_location": State(f"{prefix}-new-bin-location", "value"),
+        "country": State(f"{prefix}-new-bin-country", "value"),
+    }
+
+
+def _setup_errors(name, mode, bin_id, new_name, country):
+    """The form's field errors (SETUP_ERRORS), all None when it can be sent."""
+    errors = dict.fromkeys(SETUP_ERRORS)
+    if not name:
+        errors["name_error"] = "Give the device a name."
+    elif len(name) > MAX_NAME:
+        errors["name_error"] = f"Keep it to {MAX_NAME} characters or fewer."
+    if mode == "new":
+        if not new_name:
+            errors["new_name_error"] = "Give the bin a name."
+        if not country:
+            errors["country_error"] = "Choose a country."
+    elif not bin_id:
+        errors["bin_error"] = "Choose a bin."
+    return errors
+
+
+def _chosen_bin(mode, bin_id, new_name, new_location, country):
+    """The id of the bin the form picked, creating the bin first if it's new."""
+    if mode == "new":
+        return api_client.create_bin(new_name, country, new_location)["id"]
+    return bin_id
+
+
+def _bin_choices(bins):
+    """(options, preselected bin, bin mode) for the form, from GET /bins."""
+    options = [{"value": b["id"], "label": b["name"] or "Unnamed bin"} for b in bins]
+    first = options[0]["value"] if len(options) == 1 else None
+    return options, first, "existing" if options else "new"
+
+
+def _first_reading(state):
+    """"<device> is sending readings to <bin>." once the device has checked in
+    since it was set up (state["seen_before"]), else None."""
+    device = api_client.get_device(state["device_id"])
+    seen = device.get("last_seen_at")
+    before = state.get("seen_before")
+    if not seen or (before and datetime.fromisoformat(seen) <= datetime.fromisoformat(before)):
+        return None
+    return f"{device['name']} is sending readings to {device['bin']['name']}."
+
+
+def _register_setup_form(prefix):
+    # an error clears as soon as the field is changed, rather than on the next submit
+    for field in ("device-name", "bin", "new-bin-name", "new-bin-country"):
+        clientside_callback(
+            "function () { return null; }",
+            Output(f"{prefix}-{field}", "error", allow_duplicate=True),
+            Input(f"{prefix}-{field}", "value"),
+            prevent_initial_call=True,
+        )
+
+    @callback(
+        Output(f"{prefix}-bin", "style"),
+        Output(f"{prefix}-new-bin", "style"),
+        Input(f"{prefix}-bin-mode", "value"),
+    )
+    def show_bin_choice(mode):
+        return (HIDDEN, SHOWN) if mode == "new" else (SHOWN, HIDDEN)
+
+
+for _prefix in ("pair", "reg"):
+    _register_setup_form(_prefix)
+
+
 # ---------------------------------------------------------- pairing wizard ---
 #
 # 0 Pair     the dashboard issues a code; the page polls until the device uses it
@@ -631,8 +728,6 @@ def delete_account(n_clicks, enter, password, pathname):
 # device's API key goes straight from the API to the device and never
 # passes through the dashboard.
 
-HIDDEN = {"display": "none"}
-SHOWN = {}
 PAIR_PAGE = "/devices/add"
 
 PAIR_OUTPUTS = {
@@ -750,16 +845,10 @@ def poll_pairing(_ticks, state, active):
 
 
 def _check_first_reading(state):
-    device = api_client.get_device(state["device_id"])
-    seen = device.get("last_seen_at")
-    before = state.get("seen_before")
-    if not seen or (before and datetime.fromisoformat(seen) <= datetime.fromisoformat(before)):
+    online = _first_reading(state)
+    if online is None:
         return pair_update()
-    return pair_update(
-        poll_off=True,
-        done_title="Your device is online",
-        done_text=f"{device['name']} is sending readings to {device['bin']['name']}.",
-    )
+    return pair_update(poll_off=True, done_title="Your device is online", done_text=online)
 
 
 @callback(
@@ -827,78 +916,32 @@ def confirm_registration(_clicks):
         return no_update, no_update, no_update, no_update, *_session_ended(PAIR_PAGE)
     except (ApiError, ApiUnavailable) as error:
         return no_update, no_update, no_update, no_update, no_update, toast(_api_problem(error), "red")
-    options = [{"value": b["id"], "label": b["name"] or "Unnamed bin"} for b in bins]
-    first = options[0]["value"] if len(options) == 1 else None
-    return 2, options, first, "existing" if options else "new", no_update, no_update
-
-
-# an error clears as soon as the field is changed, rather than on the next submit
-for _field in ("pair-device-name", "pair-bin", "pair-new-bin-name", "pair-new-bin-country"):
-    clientside_callback(
-        "function () { return null; }",
-        Output(_field, "error", allow_duplicate=True),
-        Input(_field, "value"),
-        prevent_initial_call=True,
-    )
+    options, first, mode = _bin_choices(bins)
+    return 2, options, first, mode, no_update, no_update
 
 
 @callback(
-    Output("pair-bin", "style"),
-    Output("pair-new-bin", "style"),
-    Input("pair-bin-mode", "value"),
-)
-def show_bin_choice(mode):
-    return (HIDDEN, SHOWN) if mode == "new" else (SHOWN, HIDDEN)
-
-
-@callback(
-    output={
-        **PAIR_OUTPUTS,
-        "name_error": Output("pair-device-name", "error"),
-        "bin_error": Output("pair-bin", "error"),
-        "new_name_error": Output("pair-new-bin-name", "error"),
-        "country_error": Output("pair-new-bin-country", "error"),
-    },
+    output={**PAIR_OUTPUTS, **_setup_error_outputs("pair")},
     inputs={"_clicks": Input("pair-finish", "n_clicks")},
-    state={
-        "state": State("pair-state", "data"),
-        "name": State("pair-device-name", "value"),
-        "mode": State("pair-bin-mode", "value"),
-        "bin_id": State("pair-bin", "value"),
-        "new_name": State("pair-new-bin-name", "value"),
-        "new_location": State("pair-new-bin-location", "value"),
-        "country": State("pair-new-bin-country", "value"),
-    },
+    state={"state": State("pair-state", "data"), **_setup_states("pair")},
     running=[(Output("pair-finish", "loading"), True, False)],
     prevent_initial_call=True,
 )
 def finish_setup(_clicks, state, name, mode, bin_id, new_name, new_location, country):
-    errors = {"name_error": None, "bin_error": None, "new_name_error": None, "country_error": None}
+    if not _clicked() or not state:
+        return {**pair_update(), **dict.fromkeys(SETUP_ERRORS, no_update)}
+
+    name, new_name = (name or "").strip(), (new_name or "").strip()
+    errors = _setup_errors(name, mode, bin_id, new_name, country)
 
     def answer(**values):
         return {**pair_update(**values), **errors}
 
-    if not _clicked() or not state:
-        return {**pair_update(), **{key: no_update for key in errors}}
-
-    name, new_name = (name or "").strip(), (new_name or "").strip()
-    if not name:
-        errors["name_error"] = "Give the device a name."
-    elif len(name) > MAX_NAME:
-        errors["name_error"] = f"Keep it to {MAX_NAME} characters or fewer."
-    if mode == "new":
-        if not new_name:
-            errors["new_name_error"] = "Give the bin a name."
-        if not country:
-            errors["country_error"] = "Choose a country."
-    elif not bin_id:
-        errors["bin_error"] = "Choose a bin."
     if any(errors.values()):
         return answer()
 
     try:
-        if mode == "new":
-            bin_id = api_client.create_bin(new_name, country, new_location)["id"]
+        bin_id = _chosen_bin(mode, bin_id, new_name, new_location, country)
         device = api_client.set_up_device(state["device_id"], name, bin_id)
     except NotAuthenticated:
         return {**pair_signed_out(), **errors}
@@ -915,6 +958,185 @@ def finish_setup(_clicks, state, name, mode, bin_id, new_name, new_location, cou
         done_text=f"{device['name']} is set up in {device['bin']['name']}. It checks in every few seconds, so its first reading should arrive shortly.",
         notify=toast(f"{device['name']} is set up.", title="Device registered"),
     )
+
+
+# ----------------------------------------------------- registration wizard ---
+#
+# For a device that can't run the pairing flow: no code, no confirm.
+#
+# 0 Set up   name + an existing or new bin; finishing registers the device
+# 1 API key  shown this once, to copy onto the device
+# 2 Done     polls until the first reading arrives
+#
+# Unlike pairing, the key passes through the dashboard. It is never put in a
+# store: it only sits in the step-1 text, which is emptied when the user
+# moves on. reg-state holds {device_id, seen_before, resumed}.
+#
+# /devices/register?device=<id> sets up a registered device again after its
+# bin was deleted. It still has its key, so step 1 is skipped.
+
+REG_PAGE = "/devices/register"
+
+REG_OUTPUTS = {
+    "active": Output("reg-stepper", "active", allow_duplicate=True),
+    "state": Output("reg-state", "data", allow_duplicate=True),
+    "poll_off": Output("reg-poll", "disabled", allow_duplicate=True),
+    "intro": Output("reg-setup-intro", "children", allow_duplicate=True),
+    "name": Output("reg-device-name", "value", allow_duplicate=True),
+    "bins": Output("reg-bin", "data", allow_duplicate=True),
+    "bin": Output("reg-bin", "value", allow_duplicate=True),
+    "mode": Output("reg-bin-mode", "value", allow_duplicate=True),
+    "create_label": Output("reg-create", "children", allow_duplicate=True),
+    "key": Output("reg-key-value", "children", allow_duplicate=True),
+    "done_title": Output("reg-done-title", "children", allow_duplicate=True),
+    "done_text": Output("reg-done-text", "children", allow_duplicate=True),
+    "redirect": Output("redirect", "data", allow_duplicate=True),
+    "notify": Output("notify", "sendNotifications", allow_duplicate=True),
+}
+
+
+def reg_update(**values):
+    return {key: values.get(key, no_update) for key in REG_OUTPUTS}
+
+
+def reg_signed_out():
+    redirect, note = _session_ended(REG_PAGE)
+    return reg_update(redirect=redirect, notify=note, poll_off=True)
+
+
+@callback(
+    output=REG_OUTPUTS,
+    inputs={"_ready": Input("reg-init", "data"), "_another": Input("reg-another", "n_clicks")},
+    state={"search": State("url", "search")},
+    prevent_initial_call="initial_duplicate",
+)
+def open_registration(_ready, _another, search):
+    """A fresh form with the user's bins: when the page opens, and for "Register another"."""
+    another = ctx.triggered_id == "reg-another"
+    if another and not _clicked():
+        return reg_update()
+    try:
+        bins = api_client.list_bins()
+    except NotAuthenticated:
+        return reg_signed_out()
+    except (ApiError, ApiUnavailable) as error:
+        return reg_update(notify=toast(_api_problem(error), "red"))
+    options, first, mode = _bin_choices(bins)
+    fresh = reg_update(active=0, state=None, poll_off=True, intro=REGISTER_INTRO, name="",
+                       bins=options, bin=first, mode=mode, create_label="Register device", key="")
+
+    # ?device= only counts as the page opens; "Register another" starts afresh
+    device_id = "" if another else parse_qs((search or "").lstrip("?")).get("device", [""])[0]
+    if not device_id:
+        return fresh
+    try:
+        device = api_client.get_device(device_id)
+    except NotAuthenticated:
+        return reg_signed_out()
+    except (ApiError, ApiUnavailable) as error:
+        message = "That device isn’t on your account." if isinstance(error, ApiError) and error.status in (404, 422) else _api_problem(error)
+        return {**fresh, "notify": toast(message, "red")}
+    if device["set_up"]:
+        return {**fresh, "notify": toast(f"{device['name']} is already set up.")}
+    return {
+        **fresh,
+        "state": {"device_id": device["id"], "resumed": True},
+        "intro": "This device isn’t in a bin, so its readings are turned away. Choose a bin for it. "
+                 "It keeps its API key, so nothing changes on the device.",
+        "name": device["name"] or "",
+        "create_label": "Save",
+    }
+
+
+@callback(
+    output={**REG_OUTPUTS, **_setup_error_outputs("reg")},
+    inputs={"_clicks": Input("reg-create", "n_clicks")},
+    state={"state": State("reg-state", "data"), **_setup_states("reg")},
+    running=[(Output("reg-create", "loading"), True, False)],
+    prevent_initial_call=True,
+)
+def register_device(_clicks, state, name, mode, bin_id, new_name, new_location, country):
+    if not _clicked():
+        return {**reg_update(), **dict.fromkeys(SETUP_ERRORS, no_update)}
+
+    name, new_name = (name or "").strip(), (new_name or "").strip()
+    errors = _setup_errors(name, mode, bin_id, new_name, country)
+
+    def answer(**values):
+        return {**reg_update(**values), **errors}
+
+    if any(errors.values()):
+        return answer()
+
+    resumed = bool(state and state.get("resumed"))
+    try:
+        bin_id = _chosen_bin(mode, bin_id, new_name, new_location, country)
+        if resumed:
+            device, api_key = api_client.set_up_device(state["device_id"], name, bin_id), None
+        else:
+            registered = api_client.register_device(name, bin_id)
+            device, api_key = registered["device"], registered["api_key"]
+    except NotAuthenticated:
+        return {**reg_signed_out(), **errors}
+    except (ApiError, ApiUnavailable) as error:
+        if isinstance(error, ApiError) and error.status == 404:
+            return answer(notify=toast("That device or bin isn’t on your account any more.", "red"))
+        return answer(notify=toast(_api_problem(error), "red"))
+
+    state = {"device_id": device["id"], "seen_before": device.get("last_seen_at")}
+    if resumed:
+        return answer(
+            active=2,
+            state=state,
+            poll_off=False,
+            done_title="Waiting for the next reading…",
+            done_text=f"{device['name']} is set up in {device['bin']['name']}. It keeps its API key, so the next reading it sends will be stored.",
+            notify=toast(f"{device['name']} is set up.", title="Device set up"),
+        )
+    return answer(active=1, state=state, key=api_key,
+                  notify=toast(f"{device['name']} is registered.", title="Device registered"))
+
+
+@callback(
+    output=REG_OUTPUTS,
+    inputs={"_clicks": Input("reg-saved", "n_clicks")},
+    state={"state": State("reg-state", "data")},
+    prevent_initial_call=True,
+)
+def key_saved(_clicks, state):
+    """On to waiting for the first reading; the key leaves the page for good."""
+    if not _clicked() or not state:
+        return reg_update()
+    return reg_update(
+        active=2,
+        key="",
+        poll_off=False,
+        done_title="Waiting for the first reading…",
+        done_text="Start your device with the key. Its first reading shows up here as soon as it arrives.",
+    )
+
+
+@callback(
+    output=REG_OUTPUTS,
+    inputs={"_ticks": Input("reg-poll", "n_intervals")},
+    state={"state": State("reg-state", "data")},
+    prevent_initial_call=True,
+)
+def poll_registration(_ticks, state):
+    if not state:
+        return reg_update(poll_off=True)
+    try:
+        online = _first_reading(state)
+    except NotAuthenticated:
+        return reg_signed_out()
+    except ApiUnavailable:
+        return reg_update()
+    except ApiError:
+        # unpaired or gone in the meantime
+        return reg_update(poll_off=True)
+    if online is None:
+        return reg_update()
+    return reg_update(poll_off=True, done_title="Your device is online", done_text=online)
 
 
 # ---------------------------------------------------------------- new bin ---

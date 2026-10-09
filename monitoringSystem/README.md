@@ -21,6 +21,7 @@ Open `http://127.0.0.1:8050/login`, and create an account or sign in as the deve
 | Variable | Notes |
 |---|---|
 | `API_URL` | where the dashboard's server reaches the API. Defaults to `http://127.0.0.1:8000` |
+| `PUBLIC_API_URL` | where devices send readings, shown with a registered device's API key. Defaults to `https://api.compostiq.win` |
 | `WEBSITE_URL` | the public website, where `/` and signing out lead. Defaults to `https://compostiq.win`; locally `http://127.0.0.1:8070` |
 | `DASHBOARD_SECRET_KEY` | signs the session cookie |
 
@@ -40,6 +41,7 @@ Open `http://127.0.0.1:8050/login`, and create an account or sign in as the deve
 | `/bins`, `/bins/new`, `/bin/<tab>` | private | bins |
 | `/devices` | private | the user's devices from the API; unfinished ones are marked *Needs setup* |
 | `/devices/add` | private | the pairing wizard: get a code → the device redeems it → confirm its hardware ID → name and bin → wait for the first reading. `?device=<id>` resumes setup for a device paired earlier |
+| `/devices/register` | private | registering without pairing: name and bin → the device's API key, shown once with the endpoint and an example → wait for the first reading. `?device=<id>` gives a registered device a new bin after its bin was deleted |
 | `/device/<tab>` | private | device detail (mock data) |
 | `/account` | private | display name, change password, delete account |
 | anything else | | 404 page |

@@ -1,14 +1,22 @@
 """
-The signed-in user's devices: list them, finish setting one up, unpair one.
+The signed-in user's devices: register, list, finish setting up, unpair.
 
-A device joins an account in two steps (routers/pairing.py): it redeems a
-pairing code and gets its key, then the user confirms it here and gives it a
-name and a bin. Until then it has an owner but no bin, and /records answers
-409, which the device takes as "not set up yet".
+A device joins an account in one of two ways:
+
+  pairing       it redeems a pairing code and gets its key (routers/pairing.py),
+                then the user confirms it here and gives it a name and a bin.
+                Until then it has an owner but no bin, and /records answers
+                409, which the device takes as "not set up yet".
+  registration  POST /devices: the user names it and picks a bin in the
+                dashboard and gets its key back, once, to copy onto the device
+                by hand. It has no hardware ID, and its readings are accepted
+                straight away.
 """
 import datetime
+import hashlib
+import secrets
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response, Query
 from pydantic import BaseModel, BeforeValidator, Field
@@ -30,7 +38,10 @@ class BinRef(BaseModel):
 
 class Device(BaseModel):
     id: uuid.UUID
-    hardware_id: str
+    # the MAC it paired with; None for a registered device
+    hardware_id: str | None
+    # how it joined the account (see the top of this file)
+    registration: Literal["pairing", "manual"]
     name: str | None
     model: str | None
     firmware_version: str | None
@@ -56,6 +67,17 @@ class DeviceChange(BaseModel):
     bin_id: uuid.UUID | None = None
 
 
+class DeviceRegistration(BaseModel):
+    name: DeviceName
+    bin_id: uuid.UUID
+
+
+class RegisteredDevice(BaseModel):
+    device: Device
+    # returned this once; only its hash is stored
+    api_key: str
+
+
 DEVICE_SELECT = """
     SELECT d.id, d.mac, d.name, d.model, d.firmware_version, d.paired_at, d.last_seen_at,
            b.id AS bin_id, b.name AS bin_name
@@ -70,6 +92,7 @@ def device_out(row):
     return Device(
         id=row.id,
         hardware_id=row.mac,
+        registration="pairing" if row.mac else "manual",
         name=row.name,
         model=row.model,
         firmware_version=row.firmware_version,
@@ -86,6 +109,17 @@ def owned_device(db, device_id, user_id):
         text(DEVICE_SELECT + " WHERE d.id = :id AND d.owner_id = :user_id"),
         {"id": device_id, "user_id": user_id},
     ).first()
+
+
+def issue_key(db, device_id):
+    """A new API key for the device. Only its SHA-256 hash is stored, as
+    /records expects, so this is the one time the key itself can be read."""
+    api_key = secrets.token_hex(32)
+    db.execute(
+        text("INSERT INTO device_apikeys (device_id, api_key_hash) VALUES (:device_id, :hash)"),
+        {"device_id": device_id, "hash": hashlib.sha256(api_key.encode()).hexdigest()},
+    )
+    return api_key
 
 
 def release_device(db, device_id):
@@ -130,6 +164,32 @@ def list_devices(user=Depends(current_user)):
             {"user_id": user.id},
         ).all()
     return [device_out(row) for row in rows]
+
+
+@router.post("", status_code=201, response_model=RegisteredDevice)
+def register_device(body: DeviceRegistration, user=Depends(current_user)):
+    """Register a device without pairing: name it, put it in a bin, get its key.
+
+    For hardware that can't run the pairing flow. The key goes onto the device
+    by hand; there is no hardware ID to check, so nothing waits for a confirm.
+    """
+    with db_engine.begin() as db:
+        # paired_at: when it joined the account, so it sorts with paired devices
+        device_id = db.execute(
+            text(
+                """
+                INSERT INTO devices (owner_id, name, is_active, paired_at)
+                VALUES (:user_id, :name, true, now())
+                RETURNING id
+                """
+            ),
+            {"user_id": user.id, "name": body.name},
+        ).scalar_one()
+        # 404 for a bin that isn't the user's, which rolls the insert back
+        change_device(db, owned_device(db, device_id, user.id), user.id, bin_id=body.bin_id)
+        api_key = issue_key(db, device_id)
+        row = owned_device(db, device_id, user.id)
+    return RegisteredDevice(device=device_out(row), api_key=api_key)
 
 
 @router.get("/{device_id}", response_model=Device)

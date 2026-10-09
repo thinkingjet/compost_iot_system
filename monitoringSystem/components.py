@@ -216,20 +216,30 @@ def _device_status(device):
 
 
 def paired_device_card(device):
-    """A device from GET /devices."""
+    """A device from GET /devices: paired with a code, or registered with an API key."""
+    registered = device["registration"] == "manual"
     where = device["bin"]["name"] if device["bin"] else "Not in a bin yet"
     seen = device.get("last_seen_at")
+    # each kind is finished off by the wizard that made it
+    setup_page = "/devices/register" if registered else "/devices/add"
     footer = (
-        linked_button("Finish setup", f"/devices/add?device={device['id']}", size="xs", slot=device["id"])
+        linked_button("Finish setup", f"{setup_page}?device={device['id']}", size="xs", slot=device["id"])
         if not device["set_up"]
         else dmc.Text(f"Last seen {time_ago(seen)}" if seen else "No readings yet", size="sm", c="dimmed")
     )
+    if registered:
+        # nothing was learnt from the hardware, so there is no model or hardware ID
+        details = dmc.Text(where, size="sm", c="dimmed")
+        identity = dmc.Badge("API key", leftSection=icon("key", 12), variant="light", color="gray", mt="xs")
+    else:
+        details = dmc.Text(f"{where} · {device['model'] or 'Unknown model'}", size="sm", c="dimmed")
+        identity = dmc.Code(device["hardware_id"], mt="xs", w="fit-content")
     return dmc.Card(
         [
             dmc.Group([dmc.ThemeIcon(icon("device", 18), variant="light", size="lg"), _device_status(device)], justify="space-between"),
             dmc.Text(device["name"] or "New device", fw=600, size="lg", mt="md"),
-            dmc.Text(f"{where} · {device['model'] or 'Unknown model'}", size="sm", c="dimmed"),
-            dmc.Code(device["hardware_id"], mt="xs", w="fit-content"),
+            details,
+            identity,
             dmc.Group(footer, mt="md"),
         ],
         padding="md",
@@ -267,6 +277,7 @@ NAV_GROUPS = [
         "Quick actions",
         [
             ("/devices/add", "link", "Pair a device"),
+            ("/devices/register", "key", "Register with API key"),
             ("/bins/new", "plus", "Create bin"),
         ],
     ),

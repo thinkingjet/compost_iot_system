@@ -14,7 +14,6 @@ it is short-lived, used once, and guessing is limited per client IP. The key
 itself is only ever stored as a SHA-256 hash, as /records expects.
 """
 import datetime
-import hashlib
 import secrets
 import uuid
 from typing import Annotated, Literal
@@ -27,7 +26,7 @@ from sqlalchemy.exc import IntegrityError
 from config import settings
 from database import db_engine
 from routers.auth import current_user
-from routers.devices import Device, device_out, owned_device, release_device
+from routers.devices import Device, device_out, issue_key, owned_device, release_device
 
 router = APIRouter(prefix="/pairing", tags=["pairing"])
 
@@ -197,11 +196,7 @@ def redeem_code(body: RedeemRequest, request: Request):
                 failure = (410, "Pairing code expired.")
             else:
                 device_id = _claim_device(db, body, code.user_id)
-                api_key = secrets.token_hex(32)
-                db.execute(
-                    text("INSERT INTO device_apikeys (device_id, api_key_hash) VALUES (:device_id, :hash)"),
-                    {"device_id": device_id, "hash": hashlib.sha256(api_key.encode()).hexdigest()},
-                )
+                api_key = issue_key(db, device_id)
                 db.execute(
                     text("UPDATE setup_codes SET used_at = now(), device_id = :device_id WHERE id = :id"),
                     {"device_id": device_id, "id": code.id},
