@@ -39,14 +39,17 @@ from dash import (
     html,
     no_update,
 )
-from figures import telemetry_figure
+from figures import readings_figure
 from pages import (
     REGISTER_INTRO,
     account_page,
     add_device_page,
+    alerts_grid,
+    bin_detail_page,
     bins_page,
     dashboard_page,
     detail_page,
+    device_detail_page,
     devices_page,
     login_page,
     new_bin_page,
@@ -195,9 +198,18 @@ def next_page(search):
 
 
 def _detail_route(pathname):
-    """("bin" | "device", tab) for a detail URL such as /bin/live, else None."""
+    """(kind, id, tab) for a detail URL such as /bin/<id>/live, else None.
+
+    The mock cards still link to /bin/live and /device/live, which have no id.
+    """
     parts = [part for part in pathname.split("/") if part]
-    return parts if len(parts) == 2 and parts[0] in {"bin", "device"} else None
+    if not parts or parts[0] not in {"bin", "device"}:
+        return None
+    if len(parts) == 3:
+        return parts[0], parts[1], parts[2]
+    if len(parts) == 2:
+        return parts[0], None, parts[1]
+    return None
 
 
 def is_private(pathname):
@@ -209,7 +221,13 @@ def private_page(pathname, user):
         return USER_PAGES[pathname](user)
     if pathname in PRIVATE_ROUTES:
         return PRIVATE_ROUTES[pathname]()
-    return detail_page(*_detail_route(pathname))
+    kind, item_id, tab = _detail_route(pathname)
+    if item_id is None:
+        # an old mock link such as /bin/live
+        return detail_page(kind, None, tab)
+    if kind == "bin":
+        return bin_detail_page(item_id, tab)
+    return device_detail_page(item_id, tab)
 
 
 # ----------------------------------------------------------------- routing ---
@@ -312,7 +330,12 @@ def navigate(_clicks):
 def switch_detail_tab(values, pathname):
     if not ctx.triggered_id or not values or not values[0]:
         return no_update
-    target = f'/{ctx.triggered_id["kind"]}/{values[0]}'
+    route = _detail_route(pathname or "")
+    if route is None:
+        return no_update
+    kind, item_id, _ = route
+    # keep the bin or device in the address; only the tab changes
+    target = f"/{kind}/{item_id}/{values[0]}" if item_id else f"/{kind}/{values[0]}"
     return no_update if target == pathname else target
 
 
@@ -363,10 +386,24 @@ def _register_live_range(kind):
         Output({"type": "graph", "index": f"{kind}-live-chart"}, "figure", allow_duplicate=True),
         Input({"type": "live-range", "kind": kind}, "value"),
         State("color-scheme-toggle", "computedColorScheme"),
+        State("url", "pathname"),
         prevent_initial_call=True,
     )
-    def update_range(value, color_scheme):
-        figure = telemetry_figure(int(value or 24))
+    def update_range(value, color_scheme, pathname):
+        item_id = _detail_route(pathname)[1]
+        if item_id is None:
+            return no_update
+        hours = int(value or 24)
+        try:
+            if kind == "bin":
+                readings = api_client.get_bin_records(item_id, hours)
+            else:
+                readings = api_client.get_device_records(item_id, hours)
+            names = {d["id"]: d["name"] for d in api_client.list_devices()}
+        except (NotAuthenticated, ApiError, ApiUnavailable):
+            # keep the chart as it is; the next page load shows what's wrong
+            return no_update
+        figure = readings_figure(readings, names)
         figure.update_layout(template=figure_template(color_scheme))
         return figure
 
@@ -1145,10 +1182,10 @@ def poll_registration(_ticks, state):
 
 # ------------------------------------------------------------- new API key ---
 #
-# The "New API key" button on a registered device's card (/devices) opens a
-# modal: confirm, then the new key, shown once. As in the registration
-# wizard, the key only sits in the modal's text and is emptied on the way
-# out. new-key-device holds {id, name}.
+# "New API key" on a registered device's settings tab (/device/<id>/settings)
+# opens a modal: confirm, then the new key, shown once. As in the
+# registration wizard, the key only sits in the modal's text and is emptied
+# on the way out. new-key-device holds {id, name}.
 
 NEW_KEY_OUTPUTS = {
     "opened": Output("new-key-modal", "opened", allow_duplicate=True),
@@ -1166,8 +1203,8 @@ def new_key_update(**values):
     return {key: values.get(key, no_update) for key in NEW_KEY_OUTPUTS}
 
 
-def new_key_signed_out():
-    redirect, note = _session_ended("/devices")
+def new_key_signed_out(pathname):
+    redirect, note = _session_ended(pathname)
     return new_key_update(opened=False, key="", redirect=redirect, notify=note)
 
 
@@ -1180,16 +1217,17 @@ def _device_gone(error):
 @callback(
     output=NEW_KEY_OUTPUTS,
     inputs={"_clicks": Input({"type": "new-key", "device": ALL}, "n_clicks")},
+    state={"pathname": State("url", "pathname")},
     prevent_initial_call=True,
 )
-def ask_new_key(_clicks):
-    # every card's button fires with n_clicks=0 when the page renders
+def ask_new_key(_clicks, pathname):
+    # the button fires with n_clicks=0 when the settings tab renders
     if not ctx.triggered_id or not _clicked():
         return new_key_update()
     try:
         device = api_client.get_device(ctx.triggered_id["device"])
     except NotAuthenticated:
-        return new_key_signed_out()
+        return new_key_signed_out(pathname)
     except (ApiError, ApiUnavailable) as error:
         return new_key_update(notify=toast(_device_gone(error), "red"))
     name = device["name"] or "This device"
@@ -1206,17 +1244,17 @@ def ask_new_key(_clicks):
 @callback(
     output=NEW_KEY_OUTPUTS,
     inputs={"_clicks": Input("new-key-confirm", "n_clicks")},
-    state={"device": State("new-key-device", "data")},
+    state={"device": State("new-key-device", "data"), "pathname": State("url", "pathname")},
     running=[(Output("new-key-confirm", "loading"), True, False)],
     prevent_initial_call=True,
 )
-def generate_new_key(_clicks, device):
+def generate_new_key(_clicks, device, pathname):
     if not _clicked() or not device:
         return new_key_update()
     try:
         replaced = api_client.new_device_key(device["id"])
     except NotAuthenticated:
-        return new_key_signed_out()
+        return new_key_signed_out(pathname)
     except (ApiError, ApiUnavailable) as error:
         return new_key_update(notify=toast(_device_gone(error), "red"))
     return new_key_update(
@@ -1256,14 +1294,100 @@ def create_bin(n_clicks, name, country):
     return toast(f"{name} created (preview only, not saved yet).", title="Bin created"), "/bins"
 
 
+# ------------------------------------------------------------- home alerts ---
+
+@callback(Output("home-alerts", "children"), Input("alerts-poll", "n_intervals"), prevent_initial_call=True)
+def refresh_alerts(_):
+    try:
+        return alerts_grid(api_client.list_alerts())
+    except (NotAuthenticated, ApiError, ApiUnavailable):
+        # keep what's shown; the next page load deals with the problem
+        return no_update
+
+
+# ------------------------------------------------------------ bin settings ---
+
+@callback(
+    Output("redirect", "data", allow_duplicate=True),
+    Output("notify", "sendNotifications", allow_duplicate=True),
+    Output("page-root", "children", allow_duplicate=True),
+    Input("save-bin-settings", "n_clicks"),
+    State("bin-name", "value"),
+    State("bin-location", "value"),
+    State("bin-country", "value"),
+    State("url", "pathname"),
+    running=[(Output("save-bin-settings", "loading"), True, False)],
+    prevent_initial_call=True,
+)
+def save_bin_settings(n_clicks, name, location, country, pathname):
+    if not n_clicks:
+        return no_update, no_update, no_update
+    bin_id = _detail_route(pathname)[1]
+    try:
+        api_client.update_bin(bin_id, name=name, location=location or "", country_code=country)
+    except NotAuthenticated:
+        return *_session_ended(pathname), no_update
+    except ApiError:
+        return no_update, toast("Give the bin a name (up to 80 characters).", "red"), no_update
+    except ApiUnavailable:
+        return no_update, toast(API_DOWN, "red"), no_update
+    # redraw the page so the header shows the new name too
+    return no_update, toast("Bin settings saved."), bin_detail_page(bin_id, "settings")
+
+
+@callback(
+    Output("redirect", "data", allow_duplicate=True),
+    Output("notify", "sendNotifications", allow_duplicate=True),
+    Input("delete-bin", "submit_n_clicks"),
+    State("url", "pathname"),
+    prevent_initial_call=True,
+)
+def delete_bin(confirmed, pathname):
+    if not confirmed:
+        return no_update, no_update
+    try:
+        api_client.delete_bin(_detail_route(pathname)[1])
+    except NotAuthenticated:
+        return _session_ended(pathname)
+    except (ApiError, ApiUnavailable) as error:
+        return no_update, toast(_api_problem(error), "red")
+    return goto("/bins"), toast("Bin deleted.")
+
+
+# --------------------------------------------------------- device settings ---
+
+@callback(
+    Output("redirect", "data", allow_duplicate=True),
+    Output("notify", "sendNotifications", allow_duplicate=True),
+    Output("page-root", "children", allow_duplicate=True),
+    Input("save-device-settings", "n_clicks"),
+    State("device-name", "value"),
+    State("device-bin", "value"),
+    State("url", "pathname"),
+    running=[(Output("save-device-settings", "loading"), True, False)],
+    prevent_initial_call=True,
+)
+def save_device_settings(n_clicks, name, bin_id, pathname):
+    if not n_clicks:
+        return no_update, no_update, no_update
+    device_id = _detail_route(pathname)[1]
+    try:
+        api_client.update_device(device_id, name=name, bin_id=bin_id)
+    except NotAuthenticated:
+        return *_session_ended(pathname), no_update
+    except ApiError:
+        return no_update, toast("Give the device a name (up to 80 characters).", "red"), no_update
+    except ApiUnavailable:
+        return no_update, toast(API_DOWN, "red"), no_update
+    # redraw the page so the header shows the new name and bin too
+    return no_update, toast("Device settings saved."), device_detail_page(device_id, "settings")
+
+
 # ------------------------------------------------------- placeholder toasts ---
 
 PLACEHOLDER_TOASTS = {
     "export-report": "Report export prepared",
     "review-alerts": "All alerts marked as reviewed",
-    "refresh-predictions": "Predictions refreshed",
-    "save-bin-settings": "Bin settings saved",
-    "save-device-settings": "Device settings saved",
     "notification-button": "No new notifications",
 }
 

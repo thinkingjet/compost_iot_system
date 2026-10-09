@@ -110,7 +110,7 @@ If the hardware ID doesn't match, "That's not my device" calls `DELETE /devices/
 
 For hardware that can't run the pairing flow. `POST /devices` with a name and one of the user's bins creates the device, puts it in the bin and returns `{device, api_key}`. The key is in that response only; the dashboard shows it once for the user to copy onto the device, and never stores it. There is no code and no confirm step, and nothing is learnt from the hardware, so the device has no hardware ID (`devices.mac` is null, migration 004) and its readings are accepted straight away.
 
-A lost or leaked key is replaced with `POST /devices/{id}/key`: the old key stops working at once and the new one is returned, once, the same way. The dashboard offers this as **New API key** on the device's card. Only registered devices can do this (409 otherwise): a paired device has to receive its key itself, so it gets a new one by being paired again, which revokes the old one too.
+A lost or leaked key is replaced with `POST /devices/{id}/key`: the old key stops working at once and the new one is returned, once, the same way. The dashboard offers this as **New API key** on the device's settings tab. Only registered devices can do this (409 otherwise): a paired device has to receive its key itself, so it gets a new one by being paired again, which revokes the old one too.
 
 Everything else is shared with paired devices: `DELETE /devices/{id}` revokes the key, and if the device's bin is deleted it goes back to "not set up" (409 on `/records`) until `POST /devices/{id}/setup` gives it another bin. It keeps its key throughout.
 
