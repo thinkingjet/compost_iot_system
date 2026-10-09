@@ -99,6 +99,7 @@ _ICONS = {
     "device": "tabler:cpu",
     "plus": "tabler:plus",
     "link": "tabler:link",
+    "key": "tabler:key",
     "bell": "tabler:bell",
     "alert": "tabler:alert-triangle",
     "arrow-right": "tabler:arrow-right",

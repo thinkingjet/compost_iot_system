@@ -104,6 +104,7 @@ def test_redeeming_gives_the_device_a_key_but_no_bin(client, account):
     assert status["device"]["id"] == device_id
     assert status["device"]["hardware_id"].startswith(TEST_MAC_PREFIX)
     assert status["device"]["model"] == "CompostIQ Emulator"
+    assert status["device"]["registration"] == "pairing"
     assert status["device"]["set_up"] is False
 
     # the key works, but there's no bin until the user sets the device up

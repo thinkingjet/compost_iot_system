@@ -10,3 +10,5 @@ simulator/Data/
 .env
 
 .vscode/
+# test device key saved by emulator/tools/compostiq_test_device.py
+compostiq_test_device.json

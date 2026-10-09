@@ -32,6 +32,7 @@ from data import (
     TELEMETRY,
 )
 from figures import phase_history_figure, readings_figure, sparkline
+from settings import PUBLIC_API_URL
 from theme import icon
 
 CARD_GRID = {"base": 1, "sm": 2, "lg": 3}
@@ -158,7 +159,7 @@ def devices_page():
     header = page_header(
         "Hardware",
         "Devices",
-        "The CompostIQ devices paired with your account.",
+        "The CompostIQ devices on your account.",
         linked_button("Pair a device", "/devices/add", icon_name="link"),
     )
     try:
@@ -175,7 +176,13 @@ def devices_page():
                     dmc.ThemeIcon(icon("device", 26), size=52, radius="xl", variant="light"),
                     dmc.Title("No devices yet", order=4),
                     dmc.Text("Turn your CompostIQ device on, then pair it with your account.", c="dimmed", size="sm", ta="center"),
-                    linked_button("Pair a device", "/devices/add", icon_name="link", slot="empty"),
+                    dmc.Group(
+                        [
+                            linked_button("Pair a device", "/devices/add", icon_name="link", slot="empty"),
+                            linked_button("Register with API key", "/devices/register", "default", icon_name="key", slot="empty"),
+                        ],
+                        justify="center",
+                    ),
                 ],
                 align="center",
                 py="xl",
@@ -185,8 +192,6 @@ def devices_page():
         return dmc.Box([header, empty])
     return dmc.Box([header, dmc.SimpleGrid([paired_device_card(device) for device in devices], cols=CARD_GRID)])
 
-
-# ----------------------------------------------------------- detail pages ---
 
 def _sensor_chip(label, value, unit, values, color):
     return dmc.Card(
@@ -363,6 +368,52 @@ def bin_settings_panel(bin_data):
     return dmc.Card(dmc.SimpleGrid([form, delete], cols={"base": 1, "md": 2}, spacing="xl"), padding="lg")
 
 
+def _new_key_modal():
+    """A registered device's new key: confirm first, then the key, shown once.
+
+    Only its buttons close it, so a stray click outside can't lose the key.
+    """
+    ask = dmc.Stack(
+        [
+            dmc.Text(id="new-key-warning", size="sm"),
+            dmc.Group(
+                [
+                    button("Cancel", "default", component_id="new-key-cancel"),
+                    button("Generate new key", icon_name="key", component_id="new-key-confirm", color="red"),
+                ],
+                justify="flex-end",
+            ),
+        ],
+        id="new-key-ask",
+    )
+    show = dmc.Stack(
+        [
+            *_api_key_panel("new"),
+            dmc.Group([button("I’ve saved the key", icon_name="check", component_id="new-key-saved")], justify="flex-end"),
+        ],
+        id="new-key-show",
+        style=_hidden(True),
+    )
+    return [
+        # {id, name} of the device the modal is for - never its key
+        dcc.Store(id="new-key-device", data=None),
+        dmc.Modal(
+            [ask, show],
+            id="new-key-modal",
+            title="New API key",
+            size="lg",
+            centered=True,
+            opened=False,
+            closeOnClickOutside=False,
+            closeOnEscape=False,
+            withCloseButton=False,
+        ),
+    ]
+
+
+# ----------------------------------------------------------- detail pages ---
+
+
 def device_settings_panel(device, bins):
     form = dmc.Stack(
         [
@@ -378,18 +429,33 @@ def device_settings_panel(device, bins):
             dmc.Group(button("Save changes", component_id="save-device-settings"), justify="flex-end"),
         ]
     )
+    registered = device["registration"] == "manual"
     details = dmc.Stack(
         [
             _card_title("System information", "Device details"),
-            _detail_row("Hardware ID", device["hardware_id"]),
+            _detail_row("Hardware ID", device["hardware_id"] or "None (registered with an API key)"),
             _detail_row("Model", device["model"] or "Unknown"),
             _detail_row("Firmware", device["firmware_version"] or "Unknown"),
-            _detail_row("Paired", time_ago(device["paired_at"]) if device["paired_at"] else "Unknown"),
+            _detail_row("Registered" if registered else "Paired", time_ago(device["paired_at"]) if device["paired_at"] else "Unknown"),
             _detail_row("Last seen", time_ago(device["last_seen_at"]) if device["last_seen_at"] else "No readings yet"),
         ],
         gap="xs",
     )
-    return dmc.Card(dmc.SimpleGrid([form, details], cols={"base": 1, "md": 2}, spacing="xl"), padding="lg")
+    general = dmc.Card(dmc.SimpleGrid([form, details], cols={"base": 1, "md": 2}, spacing="xl"), padding="lg")
+    if not registered:
+        # a paired device gets a new key by being paired again
+        return general
+    key = dmc.Card(
+        dmc.Group(
+            [
+                _card_title("API key", "Replace the key", "For a key that was lost or leaked. The old one stops working straight away."),
+                button("New API key", "light", icon_name="key", component_id={"type": "new-key", "device": device["id"]}),
+            ],
+            justify="space-between",
+        ),
+        padding="lg",
+    )
+    return dmc.Stack([general, key, *_new_key_modal()], gap="md")
 
 
 def detail_page(kind, item_id, tab):
@@ -488,6 +554,40 @@ def _hidden(hidden):
     return {"display": "none"} if hidden else {}
 
 
+def _device_setup_fields(prefix):
+    """A device name and its bin, existing or new: the form both the pairing
+    and the registration wizards end with.
+
+    Every id starts with `prefix`; app.py registers the callbacks that go
+    with the fields (switching bin choice, clearing errors) once per prefix.
+    """
+    return [
+        dmc.TextInput(id=f"{prefix}-device-name", label="Device name", placeholder="e.g. Outer sensor", value="", required=True),
+        dmc.Stack(
+            [
+                dmc.Text("Compost bin", size="sm", fw=500),
+                dmc.SegmentedControl(
+                    id=f"{prefix}-bin-mode",
+                    data=[{"value": "existing", "label": "An existing bin"}, {"value": "new", "label": "A new bin"}],
+                    value="existing",
+                ),
+            ],
+            gap=4,
+        ),
+        dmc.Select(id=f"{prefix}-bin", placeholder="Choose a bin", data=[], allowDeselect=False),
+        dmc.Stack(
+            [
+                dmc.TextInput(id=f"{prefix}-new-bin-name", label="Bin name", placeholder="e.g. Bin 1", value="", required=True),
+                dmc.TextInput(id=f"{prefix}-new-bin-location", label="Location", placeholder="e.g. UNRAM Engineering", value=""),
+                dmc.Select(id=f"{prefix}-new-bin-country", label="Country", data=COUNTRIES, searchable=True, required=True, placeholder="Choose a country"),
+                dmc.Text("Only the country is shown publicly, as part of the anonymised global statistics.", size="xs", c="dimmed"),
+            ],
+            id=f"{prefix}-new-bin",
+            style=_hidden(True),
+        ),
+    ]
+
+
 def add_device_page():
     """Pairing: get a code here, enter it on the device, confirm, then name it and pick a bin.
 
@@ -556,29 +656,7 @@ def add_device_page():
     )
     details_step = dmc.Stack(
         [
-            dmc.TextInput(id="pair-device-name", label="Device name", placeholder="e.g. Outer sensor", value="", required=True),
-            dmc.Stack(
-                [
-                    dmc.Text("Compost bin", size="sm", fw=500),
-                    dmc.SegmentedControl(
-                        id="pair-bin-mode",
-                        data=[{"value": "existing", "label": "An existing bin"}, {"value": "new", "label": "A new bin"}],
-                        value="existing",
-                    ),
-                ],
-                gap=4,
-            ),
-            dmc.Select(id="pair-bin", placeholder="Choose a bin", data=[], allowDeselect=False),
-            dmc.Stack(
-                [
-                    dmc.TextInput(id="pair-new-bin-name", label="Bin name", placeholder="e.g. Bin 1", value="", required=True),
-                    dmc.TextInput(id="pair-new-bin-location", label="Location", placeholder="e.g. UNRAM Engineering", value=""),
-                    dmc.Select(id="pair-new-bin-country", label="Country", data=COUNTRIES, searchable=True, required=True, placeholder="Choose a country"),
-                    dmc.Text("Only the country is shown publicly, as part of the anonymised global statistics.", size="xs", c="dimmed"),
-                ],
-                id="pair-new-bin",
-                style=_hidden(True),
-            ),
+            *_device_setup_fields("pair"),
             dmc.Group([button("Finish setup", component_id="pair-finish")], justify="flex-end"),
         ],
         maw=480,
@@ -619,6 +697,121 @@ def add_device_page():
             dcc.Store(id="pair-init", data=0),
             dcc.Interval(id="pair-poll", interval=2000, disabled=True),
             page_header("Connect hardware", "Pair a device", "Link a CompostIQ device to your account."),
+            dmc.Card(stepper, padding="lg"),
+        ]
+    )
+
+
+REGISTER_INTRO = "Name the device and choose the bin it monitors. You’ll get its API key next."
+
+# how a device sends readings with its key; the key itself stays out of it,
+# in an environment variable, so it never lands in shell history
+READINGS_EXAMPLE = f"""curl -X POST {PUBLIC_API_URL}/records \\
+  -H "x-key: $COMPOSTIQ_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '[{{"timestamp": "2026-10-09T08:00:00Z", "temperature": 55.0,
+        "moisture_percent": 52.0, "o2_percent": 10.0,
+        "co2_percent": 6.0, "nh3_ratio": 0.9}}]'"""
+
+
+def _labelled(label, child):
+    return dmc.Stack([dmc.Text(label, size="sm", fw=500), child], gap=4)
+
+
+def _api_key_panel(prefix):
+    """The one-time view of a device's API key: copy it, and how to use it.
+
+    Shared by the registration wizard and the new-key modal. A callback puts
+    the key into `{prefix}-key-value` and empties it again as the user moves on.
+    """
+    key_id = f"{prefix}-key-value"
+    return [
+        dmc.Alert(
+            "This is the only time the key is shown. Copy it onto your device now and keep it private: "
+            "anyone who has it can send readings to your bin.",
+            title="Save this key",
+            color="yellow",
+            variant="light",
+            icon=icon("alert-circle"),
+        ),
+        _labelled(
+            "API key",
+            dmc.Group(
+                [
+                    dmc.Code(id=key_id, fz="sm", flex=1, style={"wordBreak": "break-all"}),
+                    dmc.CopyButton(target_id=key_id, children="Copy", copiedChildren="Copied", size="xs", variant="default"),
+                ],
+                wrap="nowrap",
+            ),
+        ),
+        _labelled("Endpoint", dmc.Code(f"POST {PUBLIC_API_URL}/records", w="fit-content")),
+        dmc.Text(
+            ["Send the key in the ", dmc.Code("x-key"), " header with every batch of readings. With the key in ",
+             dmc.Code("COMPOSTIQ_API_KEY"), ":"],
+            size="sm",
+        ),
+        dmc.Code(READINGS_EXAMPLE, block=True),
+        dmc.Text("The API answers 200 with the readings it stored, or 401 if the key is wrong or has been revoked.", size="xs", c="dimmed"),
+    ]
+
+
+def register_device_page():
+    """Registering without pairing: name it and pick a bin, then copy its API key.
+
+    For a device that can't run the pairing flow. Unlike pairing, the key
+    passes through the dashboard: it is shown on the second step, this once,
+    to be copied onto the device, and is emptied from the page after that.
+    """
+    setup_step = dmc.Stack(
+        [
+            dmc.Text(REGISTER_INTRO, id="reg-setup-intro", c="dimmed", size="sm"),
+            *_device_setup_fields("reg"),
+            dmc.Group([button("Register device", icon_name="key", component_id="reg-create")], justify="flex-end"),
+        ],
+        maw=480,
+        py="md",
+    )
+    key_step = dmc.Stack(
+        [
+            *_api_key_panel("reg"),
+            dmc.Group([button("I’ve saved the key", icon_name="check", component_id="reg-saved")], justify="flex-end"),
+        ],
+        py="md",
+    )
+    done_step = dmc.Stack(
+        [
+            dmc.ThemeIcon(icon("check", 28), size=56, radius="xl", variant="light"),
+            dmc.Title("Waiting for the first reading…", order=4, id="reg-done-title"),
+            dmc.Text(id="reg-done-text", c="dimmed", size="sm", ta="center"),
+            dmc.Group(
+                [
+                    button("Register another device", "default", component_id="reg-another"),
+                    linked_button("Go to devices", "/devices", icon_name="arrow-right"),
+                ]
+            ),
+        ],
+        align="center",
+        py="xl",
+    )
+    stepper = dmc.Stepper(
+        id="reg-stepper",
+        active=0,
+        allowNextStepsSelect=False,
+        children=[
+            # no going back once the device exists: a second submit would register another
+            dmc.StepperStep(label="Set up", description="Name & bin", children=setup_step, allowStepSelect=False),
+            dmc.StepperStep(label="API key", description="Copy it", children=key_step, allowStepSelect=False),
+            dmc.StepperCompleted(children=done_step),
+        ],
+    )
+    return dmc.Box(
+        [
+            # the device's id - never its key, which only ever sits in the step-2 text
+            dcc.Store(id="reg-state", data=None),
+            # never changes: fires open_registration once when the page opens
+            dcc.Store(id="reg-init", data=0),
+            dcc.Interval(id="reg-poll", interval=2000, disabled=True),
+            page_header("Connect hardware", "Register a device", "Add a device without pairing: choose its bin, then copy the API key it sends readings with."),
             dmc.Card(stepper, padding="lg"),
         ]
     )

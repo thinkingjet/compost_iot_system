@@ -59,7 +59,18 @@ checks (migration, item, ok) AS (
         ('003', 'unique index on live setup codes',
             to_regclass('public.setup_codes_live_code_key') IS NOT NULL),
         ('003', 'table pairing_failures exists',
-            to_regclass('public.pairing_failures') IS NOT NULL)
+            to_regclass('public.pairing_failures') IS NOT NULL),
+
+        ('004', 'devices.mac is optional',
+            EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'devices' AND column_name = 'mac' AND is_nullable = 'YES')),
+
+        ('004', 'devices.registration, not null',
+            EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'devices' AND column_name = 'registration' AND is_nullable = 'NO')),
+        ('004', 'registration is pairing or manual, and manual exactly when there is no MAC',
+            (SELECT count(*) = 2 FROM pg_constraint
+             WHERE conname IN ('devices_registration_check', 'devices_registration_mac_check')))
 )
 SELECT migration, item, CASE WHEN ok THEN 'applied' ELSE 'MISSING' END AS status
 FROM checks

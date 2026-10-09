@@ -4,7 +4,7 @@ Three sites share the VM:
 
 | Address | What | Served by |
 |---|---|---|
-| `compostiq.win` (and `www.`, which redirects) | The public website | NGINX, straight from the repo's `website/public` through the `/var/www/compostiq` symlink ([website/README.md](../../website/README.md)) |
+| `compostiq.win` (and `www.`, which redirects) | The public website | NGINX, straight from the repo's `website/public`, bind-mounted at `/var/www/compostiq` ([website/README.md](../../website/README.md)) |
 | `dashboard.compostiq.win` | The dashboard | PM2 `compostiq-dashboard`, port 8050 |
 | `api.compostiq.win` | The API | PM2 `compostiq-api`, port 8000 |
 
@@ -25,11 +25,7 @@ sudo nginx -t && sudo systemctl reload nginx
 sudo certbot renew --dry-run                        # confirm auto-renewal works
 ```
 
-The website also needs its folder linked into place once (details in [website/README.md](../../website/README.md)):
-
-```bash
-sudo ln -sfn "$(git rev-parse --show-toplevel)/website/public" /var/www/compostiq
-```
+The website also needs its folder mounted into place once. The steps, and why it's a bind mount rather than a symlink, are in [website/README.md](../../website/README.md#set-up-on-the-vm-once).
 
 ### Adding compostiq.win to an existing certificate
 

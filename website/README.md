@@ -69,16 +69,23 @@ snapshot locally, because nothing passes `/api/public/` through to the API.
 2. **NGINX and the certificate**: install `deploy/nginx/compostiq.conf` and
    add the two names to the certificate. The steps are in
    [deploy/nginx/README.md](../deploy/nginx/README.md).
-3. **Link the files into place**, from the repo on the VM:
+3. **Mount the files into place**, from the repo on the VM. A bind mount
+   makes `website/public` appear at `/var/www/compostiq` as a real folder.
+   NGINX runs as `www-data`, which usually can't enter the folder the repo is
+   in (`/root` or a home folder); through the mount it never has to, and the
+   rest of that folder, `.env` included, stays closed to it.
 
    ```bash
-   sudo ln -sfn "$(git rev-parse --show-toplevel)/website/public" /var/www/compostiq
+   SITE="$(git rev-parse --show-toplevel)/website/public"
+   sudo mkdir -p /var/www/compostiq
+   sudo mount --bind "$SITE" /var/www/compostiq
+   echo "$SITE /var/www/compostiq none bind 0 0" | sudo tee -a /etc/fstab   # remount after a reboot
+   sudo -u www-data head -3 /var/www/compostiq/index.html                  # should print HTML
    ```
 
-   NGINX runs as `www-data`, which must be able to reach the repo. If the repo
-   is in a home folder, check with
-   `sudo -u www-data cat /var/www/compostiq/index.html`. If that fails, let it
-   pass through (not list) the folders on the way:
-   `chmod o+x /home/<user>`.
+   If `/var/www/compostiq` is left over from an earlier setup as a symlink,
+   remove it first with `sudo rm /var/www/compostiq` (no trailing slash).
+   A 404 from NGINX on `compostiq.win` almost always means this step is
+   missing or `www-data` can't read the files.
 
 After that, every `git pull` publishes the site.

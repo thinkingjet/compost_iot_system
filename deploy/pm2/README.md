@@ -62,6 +62,7 @@ chmod 600 .env
 | `JWT_SECRET` | API | signs sign-in tokens. Required, at least 32 characters: `python3 -c "import secrets; print(secrets.token_urlsafe(48))"`. Changing it signs everyone out |
 | `JWT_EXPIRY_HOURS` | API | optional, defaults to 8 |
 | `API_URL` | Dashboard | `http://127.0.0.1:8000`. Keep it on the loopback address, so the dashboard's calls skip NGINX and its rate limit |
+| `PUBLIC_API_URL` | Dashboard | optional, defaults to `https://api.compostiq.win`. Shown to users with a registered device's API key, as where the device sends readings |
 | `DASHBOARD_SECRET_KEY` | Dashboard | signs the session cookie. Required: the dashboard refuses to start without it. Use a different value from `JWT_SECRET` |
 
 `ecosystem.config.js` reads `.env` from the repo root and gives each app only the variables it needs. The dashboard never receives `DATABASE_URL`. When an app starts reading a new variable, add its name to that app's `pick([...])` list.
