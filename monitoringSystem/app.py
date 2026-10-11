@@ -1292,19 +1292,32 @@ def close_new_key(_clicks):
 # ---------------------------------------------------------------- new bin ---
 
 @callback(
+    Output("redirect", "data", allow_duplicate=True),
     Output("notify", "sendNotifications", allow_duplicate=True),
-    Output("url", "pathname", allow_duplicate=True),
     Input("new-bin-submit", "n_clicks"),
     State("new-bin-name", "value"),
+    State("new-bin-location", "value"),
     State("new-bin-country", "value"),
+    State("url", "pathname"),
+    running=[(Output("new-bin-submit", "loading"), True, False)],
     prevent_initial_call=True,
 )
-def create_bin(n_clicks, name, country):
-    if not n_clicks:
+def create_bin(n_clicks, name, location, country, pathname):
+    if not _clicked():
         return no_update, no_update
-    if not (name and country):
-        return toast("A bin needs a name and a country.", "red"), no_update
-    return toast(f"{name} created (preview only, not saved yet).", title="Bin created"), "/bins"
+    name = (name or "").strip()
+    location = (location or "").strip()
+    if not name or not country:
+        return no_update, toast("A bin needs a name and a country.", "red")
+    if len(name) > 80 or len(location) > 120:
+        return no_update, toast("Keep the name under 80 characters and location under 120.", "red")
+    try:
+        bin_data = api_client.create_bin(name, country, location)
+    except NotAuthenticated:
+        return _session_ended(pathname)
+    except (ApiError, ApiUnavailable) as error:
+        return no_update, toast(_api_problem(error), "red")
+    return goto(f"/bin/{bin_data['id']}/settings"), toast("Bin created.")
 
 
 # ------------------------------------------------------------- home alerts ---
