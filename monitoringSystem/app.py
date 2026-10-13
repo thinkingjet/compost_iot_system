@@ -41,6 +41,7 @@ from dash import (
 )
 from figures import GAS_SENSORS, readings_figure
 from pages import (
+    ALERT_TEXT,
     REGISTER_INTRO,
     account_page,
     add_device_page,
@@ -1398,27 +1399,30 @@ def save_device_settings(n_clicks, name, bin_id, pathname):
     return no_update, toast("Device settings saved."), device_detail_page(device_id, "settings")
 
 
-# ------------------------------------------------------- placeholder toasts ---
+# ----------------------------------------------------------- notifications ---
 
-PLACEHOLDER_TOASTS = {
-    "export-report": "Report export prepared",
-    "review-alerts": "All alerts marked as reviewed",
-    "notification-button": "No new notifications",
-}
-
-
-def _register_toast(component_id, message):
-    @callback(
-        Output("notify", "sendNotifications", allow_duplicate=True),
-        Input(component_id, "n_clicks"),
-        prevent_initial_call=True,
-    )
-    def show(n_clicks):
-        return toast(message) if n_clicks else no_update
-
-
-for _component_id, _message in PLACEHOLDER_TOASTS.items():
-    _register_toast(_component_id, _message)
+@callback(
+    Output("notify", "sendNotifications", allow_duplicate=True),
+    Input("notification-button", "n_clicks"),
+    prevent_initial_call=True,
+)
+def show_open_alerts(n_clicks):
+    """The bell: the user's open alerts, one line each."""
+    if not n_clicks:
+        return no_update
+    try:
+        alerts = api_client.list_alerts()
+    except NotAuthenticated:
+        return toast(SESSION_EXPIRED, "yellow")
+    except (ApiError, ApiUnavailable) as error:
+        return toast(_api_problem(error), "red")
+    if not alerts:
+        return toast("Nothing needs attention right now.", title="No open alerts")
+    lines = [f"{alert['bin_name']}: {ALERT_TEXT.get(alert['type'], (alert['type'],))[0]}" for alert in alerts[:3]]
+    if len(alerts) > 3:
+        lines.append(f"{len(alerts) - 3} more on the overview page")
+    title = "1 open alert" if len(alerts) == 1 else f"{len(alerts)} open alerts"
+    return toast(" · ".join(lines), "red", title)
 
 
 if __name__ == "__main__":

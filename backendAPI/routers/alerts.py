@@ -28,8 +28,9 @@ router = APIRouter(prefix="/alerts", tags=["alerts"])
 MAX_TEMPERATURE = 70      # °C, above this even useful microbes die
 MIN_MOISTURE = 40         # %, below this the pile dries out and stalls
 MAX_MOISTURE = 60         # %, above this the pile goes anaerobic
-# a set-up device quiet for this long counts as offline
-OFFLINE_AFTER = datetime.timedelta(hours=1)
+# a set-up device quiet for this long counts as offline; the same as the
+# dashboard's ONLINE_WITHIN, so its "Offline" badge and this alert agree
+OFFLINE_AFTER = datetime.timedelta(minutes=10)
 
 SEVERITY = {"too_hot": "high", "too_dry": "medium", "too_wet": "medium"}
 

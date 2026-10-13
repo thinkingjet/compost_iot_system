@@ -1,5 +1,8 @@
+from datetime import datetime
+
 import plotly.graph_objects as go
 from data import HISTORICAL, TELEMETRY
+from settings import SITE_TIMEZONE
 from theme import SENSOR_COLORS, rgba
 
 GRAPH_CONFIG = {
@@ -11,6 +14,15 @@ GRAPH_CONFIG = {
 # 55 °C sustained is the EPA Class A pathogen-kill target, the same line the
 # simulator draws on its temperature chart.
 PATHOGEN_KILL_TEMP = 55
+
+
+def site_time(iso):
+    """An API timestamp as the site's local clock time.
+
+    Plotly ignores a timestamp's UTC offset and draws the clock time as
+    written, so it's converted to the site's timezone first.
+    """
+    return datetime.fromisoformat(iso).astimezone(SITE_TIMEZONE).replace(tzinfo=None)
 
 
 def sparkline(values, color="health", height=50):
@@ -90,7 +102,7 @@ def readings_figure(readings, device_names, sensors=CLIMATE_SENSORS):
         for name, key, color, unit in sensors:
             figure.add_trace(
                 go.Scatter(
-                    x=[r["timestamp"] for r in rows],
+                    x=[site_time(r["timestamp"]) for r in rows],
                     y=[r[key] for r in rows],
                     name=name + suffix,
                     mode="lines",
