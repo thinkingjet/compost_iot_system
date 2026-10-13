@@ -14,7 +14,7 @@ from sqlalchemy import text
 
 from conftest import TEST_PASSWORD, reading
 from main import db_engine
-from routers.alerts import MAX_TEMPERATURE, OFFLINE_AFTER
+from routers.alerts import MAX_CO2, MAX_MOISTURE, MAX_TEMPERATURE, MIN_MOISTURE, MIN_O2, OFFLINE_AFTER
 
 # upper case, as the API stores hardware IDs; test_pairing.py uses ...:FD:
 TEST_MAC_PREFIX = "02:00:00:00:FC:"
@@ -418,9 +418,9 @@ def test_different_problems_are_separate_incidents(client, account):
     _, api_key = _device(client, headers, bin_id)
     _send(
         client, api_key,
-        reading(timestamp=_ago(minutes=30), temperature=72.0, moisture_percent=63.0),   # hot and wet
+        reading(timestamp=_ago(minutes=30), temperature=72.0, moisture_percent=75.0),   # hot and wet
         reading(timestamp=_ago(minutes=20), temperature=72.0, moisture_percent=50.0),   # still hot
-        reading(timestamp=_ago(minutes=10), temperature=60.0, moisture_percent=35.0),   # now dry
+        reading(timestamp=_ago(minutes=10), temperature=60.0, moisture_percent=25.0),   # now dry
     )
     rows = {row.type: row for row in _incidents(bin_id)}
     assert set(rows) == {"too_hot", "too_wet", "too_dry"}
@@ -449,9 +449,25 @@ def test_in_range_readings_open_nothing(client, account):
     bin_id = _bin(client, headers)
     _, api_key = _device(client, headers, bin_id)
     # exactly on the thresholds is still fine
-    _send(client, api_key, reading(timestamp=_ago(minutes=5), temperature=70.0, moisture_percent=40.0),
-          reading(timestamp=_ago(minutes=4), temperature=55.0, moisture_percent=60.0))
+    _send(client, api_key,
+          reading(timestamp=_ago(minutes=5), temperature=MAX_TEMPERATURE, moisture_percent=MIN_MOISTURE, o2_percent=MIN_O2),
+          reading(timestamp=_ago(minutes=4), temperature=55.0, moisture_percent=MAX_MOISTURE, co2_percent=MAX_CO2))
     assert _incidents(bin_id) == []
+
+
+def test_gas_readings_open_their_own_incidents(client, account):
+    headers = account["headers"]
+    bin_id = _bin(client, headers)
+    _, api_key = _device(client, headers, bin_id)
+    _send(
+        client, api_key,
+        reading(timestamp=_ago(minutes=20), o2_percent=MIN_O2 - 0.5, co2_percent=MAX_CO2 + 1),   # no air
+        reading(timestamp=_ago(minutes=10), o2_percent=6.0, co2_percent=MAX_CO2 + 1),           # oxygen back
+    )
+    rows = {row.type: row for row in _incidents(bin_id)}
+    assert set(rows) == {"low_oxygen", "high_co2"}
+    assert rows["low_oxygen"].resolved_at is not None and rows["low_oxygen"].severity == "high"
+    assert rows["high_co2"].resolved_at is None and rows["high_co2"].severity == "medium"
 
 
 # ------------------------------------------------------------- GET /alerts ---
@@ -464,7 +480,7 @@ def test_alerts_show_open_incidents_and_history_on_request(client, account):
         client, api_key,
         reading(timestamp=_ago(minutes=40), temperature=72.0, moisture_percent=50.0),
         reading(timestamp=_ago(minutes=30), temperature=60.0, moisture_percent=50.0),   # hot resolved
-        reading(timestamp=_ago(minutes=20), temperature=60.0, moisture_percent=35.0),   # dry, open
+        reading(timestamp=_ago(minutes=20), temperature=60.0, moisture_percent=25.0),   # dry, open
     )
 
     response = client.get("/alerts", headers=headers)
@@ -484,7 +500,7 @@ def test_alerts_can_be_filtered_to_one_bin(client, account):
     _, hot_key = _device(client, headers, hot_bin)
     _, dry_key = _device(client, headers, dry_bin)
     _send(client, hot_key, reading(timestamp=_ago(minutes=5), temperature=75.0, moisture_percent=50.0))
-    _send(client, dry_key, reading(timestamp=_ago(minutes=5), temperature=50.0, moisture_percent=30.0))
+    _send(client, dry_key, reading(timestamp=_ago(minutes=5), temperature=50.0, moisture_percent=25.0))
 
     assert {a["type"] for a in client.get("/alerts", headers=headers).json()} == {"too_hot", "too_dry"}
     assert [a["type"] for a in client.get(f"/alerts?bin_id={hot_bin}", headers=headers).json()] == ["too_hot"]

@@ -52,6 +52,8 @@ ALERT_TEXT = {
     "too_hot": ("Temperature is too high", "Turn the pile to cool it"),
     "too_dry": ("Moisture is too low", "Add water"),
     "too_wet": ("Moisture is too high", "Turn it and add dry material"),
+    "low_oxygen": ("Oxygen is very low", "Turn the pile to let air in"),
+    "high_co2": ("CO₂ is very high", "Turn the pile to let air in"),
     "offline": ("Sensor offline", "Check its power and Wi-Fi"),
 }
 

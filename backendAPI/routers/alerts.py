@@ -24,15 +24,24 @@ from routers.auth import current_user
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
-# thresholds from composting science (CLAUDE.md, D3 domain model)
+# PLACEHOLDER THRESHOLDS - roughly reasonable, not yet checked against the
+# literature. They mark readings that are clearly wrong, not just off the
+# ideal: 40-60 % moisture is ideal, but a healthy simulated pile goes from
+# about 35 to 69 % across its stages, so alerting at 40/60 fired on piles
+# that were fine. None of these fire on 200 healthy simulated cycles, except
+# MIN_O2 (a one-reading blip in about 1 cycle in 20, at the hottest stage).
 MAX_TEMPERATURE = 70      # °C, above this even useful microbes die
-MIN_MOISTURE = 40         # %, below this the pile dries out and stalls
-MAX_MOISTURE = 60         # %, above this the pile goes anaerobic
+MIN_MOISTURE = 30         # %, below this the pile dries out and stalls
+MAX_MOISTURE = 70         # %, above this the pile goes anaerobic
+MIN_O2 = 1.0              # %, below this the pile has run out of air
+MAX_CO2 = 12.0            # %, well above the usual 2-10 %: not enough air getting in
+# NH3 has no rule: the sensor gives a relative level (0-1), not a
+# concentration, and a healthy pile reaches 1.0 at its hottest
 # a set-up device quiet for this long counts as offline; the same as the
 # dashboard's ONLINE_WITHIN, so its "Offline" badge and this alert agree
 OFFLINE_AFTER = datetime.timedelta(minutes=10)
 
-SEVERITY = {"too_hot": "high", "too_dry": "medium", "too_wet": "medium"}
+SEVERITY = {"too_hot": "high", "too_dry": "medium", "too_wet": "medium", "low_oxygen": "high", "high_co2": "medium"}
 
 # history is newest first, and capped so one request stays small
 HISTORY_LIMIT = 500
@@ -62,6 +71,10 @@ def broken_rules(reading):
         types.add("too_dry")
     if reading.moisture_percent > MAX_MOISTURE:
         types.add("too_wet")
+    if reading.o2_percent < MIN_O2:
+        types.add("low_oxygen")
+    if reading.co2_percent > MAX_CO2:
+        types.add("high_co2")
     return types
 
 

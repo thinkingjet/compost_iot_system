@@ -300,9 +300,9 @@ def paired_device_card(device):
 
 
 def alert_card(kind, title, detail, priority):
-    """kind is an alert type from GET /alerts: too_hot, too_dry, too_wet or offline."""
-    color = {"too_hot": "red", "offline": "gray"}.get(kind, "blue")
-    icon_name = {"too_hot": "temperature", "offline": "device"}.get(kind, "droplet")
+    """kind is an alert type from GET /alerts, e.g. too_hot, low_oxygen or offline."""
+    color = {"too_hot": "red", "low_oxygen": "red", "offline": "gray"}.get(kind, "blue")
+    icon_name = {"too_hot": "temperature", "low_oxygen": "wind", "high_co2": "wind", "offline": "device"}.get(kind, "droplet")
     return dmc.Card(
         dmc.Group(
             [
