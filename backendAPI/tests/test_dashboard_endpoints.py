@@ -221,7 +221,7 @@ def test_bin_records_check_the_window_and_the_owner(client, account, other_accou
 
 # ----------------------------------------------- GET /bins/{bin_id}/history ---
 
-def test_history_is_one_row_per_day_with_average_and_peak(client, account):
+def test_history_is_one_row_per_day_with_averages_and_peak(client, account):
     headers = account["headers"]
     bin_id = _bin(client, headers)
     _, api_key = _device(client, headers, bin_id)
@@ -230,8 +230,10 @@ def test_history_is_one_row_per_day_with_average_and_peak(client, account):
     day1, day2 = today - datetime.timedelta(days=2), today - datetime.timedelta(days=1)
     _send(
         client, api_key,
-        reading(timestamp=(day1 - datetime.timedelta(hours=1)).isoformat(), temperature=40.0),
-        reading(timestamp=day1.isoformat(), temperature=50.0),
+        reading(timestamp=(day1 - datetime.timedelta(hours=1)).isoformat(), temperature=40.0, moisture_percent=50.0,
+                o2_percent=6.0, co2_percent=4.0, nh3_ratio=0.2),
+        reading(timestamp=day1.isoformat(), temperature=50.0, moisture_percent=54.0,
+                o2_percent=8.0, co2_percent=2.0, nh3_ratio=0.4),
         reading(timestamp=(day2 - datetime.timedelta(hours=1)).isoformat(), temperature=60.0),
         reading(timestamp=day2.isoformat(), temperature=74.0),
         reading(timestamp=(day2 + datetime.timedelta(hours=1)).isoformat(), temperature=64.0),
@@ -239,9 +241,12 @@ def test_history_is_one_row_per_day_with_average_and_peak(client, account):
 
     response = client.get(f"/bins/{bin_id}/history?days=7", headers=headers)
     assert response.status_code == 200
+    # day 2's readings use reading()'s defaults for everything but temperature
     assert response.json() == [
-        {"day": day1.date().isoformat(), "avg_temp": 45.0, "max_temp": 50.0},
-        {"day": day2.date().isoformat(), "avg_temp": pytest.approx(66.0), "max_temp": 74.0},
+        {"day": day1.date().isoformat(), "avg_temp": 45.0, "max_temp": 50.0, "avg_moisture": 52.0,
+         "avg_o2": 7.0, "avg_co2": 3.0, "avg_nh3": pytest.approx(0.3)},
+        {"day": day2.date().isoformat(), "avg_temp": pytest.approx(66.0), "max_temp": 74.0, "avg_moisture": 52.0,
+         "avg_o2": 6.5, "avg_co2": pytest.approx(4.2), "avg_nh3": pytest.approx(0.4)},
     ]
 
 

@@ -31,9 +31,9 @@ from data import (
     METRICS,
     TELEMETRY,
 )
-from figures import GAS_SENSORS, phase_history_figure, readings_figure, sparkline
+from figures import GAS_SENSORS, daily_averages_figure, phase_history_figure, readings_figure, sparkline
 from settings import PUBLIC_API_URL, SITE_TIMEZONE
-from theme import icon
+from theme import SENSOR_COLORS, icon
 
 CARD_GRID = {"base": 1, "sm": 2, "lg": 3}
 
@@ -272,6 +272,15 @@ def maintenance_panel():
     )
 
 
+# the daily averages GET /bins/{id}/history returns besides temperature
+HISTORY_MOISTURE = [("Moisture", "avg_moisture", SENSOR_COLORS["moisture"], "%")]
+HISTORY_GASES = [
+    ("Oxygen", "avg_o2", SENSOR_COLORS["oxygen"], "%"),
+    ("CO₂", "avg_co2", SENSOR_COLORS["co2"], "%"),
+    ("NH₃", "avg_nh3", SENSOR_COLORS["nh3"], ""),
+]
+
+
 def history_panel(history, subtitle=None):
     temperature = dmc.Card(
         [
@@ -280,12 +289,15 @@ def history_panel(history, subtitle=None):
         ],
         padding="md",
     )
-    # needs the prediction model (D6); until then, say so instead of a made-up score
-    health = dmc.Card(
-        [_card_title("Quality score", "Compost health"), dmc.Text("Coming with the prediction model.", c="dimmed", size="sm", mt="md")],
+    moisture = dmc.Card(
+        [_card_title("Daily average", "Moisture"), plot(daily_averages_figure(history, HISTORY_MOISTURE))],
         padding="md",
     )
-    return dmc.SimpleGrid([temperature, health], cols={"base": 1, "md": 2})
+    gases = dmc.Card(
+        [_card_title("Daily average", "Gases"), plot(daily_averages_figure(history, HISTORY_GASES))],
+        padding="md",
+    )
+    return dmc.Stack([temperature, dmc.SimpleGrid([moisture, gases], cols={"base": 1, "md": 2})], gap="md")
 
 
 def devices_panel():

@@ -156,6 +156,31 @@ def phase_history_figure(history):
     return figure
 
 
+def daily_averages_figure(history, sensors):
+    """Daily averages from GET /bins/{id}/history, one line per sensor.
+
+    sensors is a list of (name, key, color, unit), like CLIMATE_SENSORS.
+    """
+    days = [day["day"] for day in history]
+    figure = go.Figure(
+        [
+            go.Scatter(
+                x=days,
+                y=[day[key] for day in history],
+                mode="lines+markers",
+                name=name,
+                line={"color": color, "width": 2},
+                hovertemplate=f"%{{x}}<br>%{{y:.2f}}{unit}<extra>{name}</extra>",
+            )
+            for name, key, color, unit in sensors
+        ]
+    )
+    if not history:
+        figure.add_annotation(text="No readings in this period", showarrow=False, xref="paper", yref="paper", x=0.5, y=0.5)
+    figure.update_layout(height=260, hovermode="x unified", legend={"orientation": "h", "x": 0, "y": 1.14})
+    return figure
+
+
 def health_figure():
     color = SENSOR_COLORS["health"]
     figure = go.Figure(
