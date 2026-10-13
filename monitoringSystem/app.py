@@ -39,7 +39,7 @@ from dash import (
     html,
     no_update,
 )
-from figures import readings_figure
+from figures import GAS_SENSORS, readings_figure
 from pages import (
     REGISTER_INTRO,
     account_page,
@@ -384,6 +384,7 @@ def apply_figure_template(color_scheme, ids):
 def _register_live_range(kind):
     @callback(
         Output({"type": "graph", "index": f"{kind}-live-chart"}, "figure", allow_duplicate=True),
+        Output({"type": "graph", "index": f"{kind}-gas-chart"}, "figure", allow_duplicate=True),
         Input({"type": "live-range", "kind": kind}, "value"),
         State("color-scheme-toggle", "computedColorScheme"),
         State("url", "pathname"),
@@ -392,7 +393,7 @@ def _register_live_range(kind):
     def update_range(value, color_scheme, pathname):
         item_id = _detail_route(pathname)[1]
         if item_id is None:
-            return no_update
+            return no_update, no_update
         hours = int(value or 24)
         try:
             if kind == "bin":
@@ -401,11 +402,12 @@ def _register_live_range(kind):
                 readings = api_client.get_device_records(item_id, hours)
             names = {d["id"]: d["name"] for d in api_client.list_devices()}
         except (NotAuthenticated, ApiError, ApiUnavailable):
-            # keep the chart as it is; the next page load shows what's wrong
-            return no_update
-        figure = readings_figure(readings, names)
-        figure.update_layout(template=figure_template(color_scheme))
-        return figure
+            # keep the charts as they are; the next page load shows what's wrong
+            return no_update, no_update
+        figures = readings_figure(readings, names), readings_figure(readings, names, GAS_SENSORS)
+        for figure in figures:
+            figure.update_layout(template=figure_template(color_scheme))
+        return figures
 
 
 for _kind in ("bin", "device"):

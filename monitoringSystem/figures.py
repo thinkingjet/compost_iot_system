@@ -63,8 +63,21 @@ def telemetry_figure(hours=24):
     return figure
 
 
-def readings_figure(readings, device_names):
-    """Temperature and moisture from GET /bins/{id}/records or /devices/{id}/records.
+# Temperature and moisture share a scale; the gases are much smaller numbers,
+# so they get their own chart instead of being flattened along the bottom.
+CLIMATE_SENSORS = (
+    ("Temperature", "temperature", SENSOR_COLORS["temperature"], "°C"),
+    ("Moisture", "moisture_percent", SENSOR_COLORS["moisture"], "%"),
+)
+GAS_SENSORS = (
+    ("Oxygen", "o2_percent", SENSOR_COLORS["oxygen"], "%"),
+    ("CO₂", "co2_percent", SENSOR_COLORS["co2"], "%"),
+    ("NH₃", "nh3_ratio", SENSOR_COLORS["nh3"], ""),
+)
+
+
+def readings_figure(readings, device_names, sensors=CLIMATE_SENSORS):
+    """Readings from GET /bins/{id}/records or /devices/{id}/records, one line per sensor.
 
     A bin can hold several sensors: each gets its own lines, or they would zigzag
     between the two. device_names maps a device id to its name for the legend.
@@ -74,10 +87,7 @@ def readings_figure(readings, device_names):
     for number, device_id in enumerate(device_ids):
         rows = [r for r in readings if r["device_id"] == device_id]
         suffix = f" · {device_names.get(device_id) or 'Sensor'}" if len(device_ids) > 1 else ""
-        for name, key, color, unit in (
-            ("Temperature", "temperature", SENSOR_COLORS["temperature"], "°C"),
-            ("Moisture", "moisture_percent", SENSOR_COLORS["moisture"], "%"),
-        ):
+        for name, key, color, unit in sensors:
             figure.add_trace(
                 go.Scatter(
                     x=[r["timestamp"] for r in rows],

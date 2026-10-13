@@ -31,7 +31,7 @@ from data import (
     METRICS,
     TELEMETRY,
 )
-from figures import phase_history_figure, readings_figure, sparkline
+from figures import GAS_SENSORS, phase_history_figure, readings_figure, sparkline
 from settings import PUBLIC_API_URL
 from theme import icon
 
@@ -229,8 +229,9 @@ def readings_strip(readings):
             chip("Moisture", "moisture_percent", "%", "moisture"),
             chip("Oxygen", "o2_percent", "%", "oxygen"),
             chip("CO₂", "co2_percent", "%", "co2"),
+            chip("NH₃", "nh3_ratio", "", "nh3"),
         ],
-        cols={"base": 2, "md": 4},
+        cols={"base": 2, "md": 5},
         mb="md",
     )
 
@@ -252,7 +253,8 @@ def live_panel(kind, readings, device_names):
         mb="sm",
     )
     chart = plot(readings_figure(readings, device_names), name=f"{kind}-live-chart")
-    return dmc.Box([readings_strip(readings), dmc.Card([toolbar, chart], padding="md")])
+    gas_chart = plot(readings_figure(readings, device_names, GAS_SENSORS), name=f"{kind}-gas-chart")
+    return dmc.Box([readings_strip(readings), dmc.Card([toolbar, chart, gas_chart], padding="md")])
 
 
 def maintenance_panel():
