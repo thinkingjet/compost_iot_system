@@ -39,8 +39,9 @@ from dash import (
     html,
     no_update,
 )
-from figures import readings_figure
+from figures import GAS_SENSORS, readings_figure
 from pages import (
+    ALERT_TEXT,
     REGISTER_INTRO,
     account_page,
     add_device_page,
@@ -384,6 +385,7 @@ def apply_figure_template(color_scheme, ids):
 def _register_live_range(kind):
     @callback(
         Output({"type": "graph", "index": f"{kind}-live-chart"}, "figure", allow_duplicate=True),
+        Output({"type": "graph", "index": f"{kind}-gas-chart"}, "figure", allow_duplicate=True),
         Input({"type": "live-range", "kind": kind}, "value"),
         State("color-scheme-toggle", "computedColorScheme"),
         State("url", "pathname"),
@@ -392,7 +394,7 @@ def _register_live_range(kind):
     def update_range(value, color_scheme, pathname):
         item_id = _detail_route(pathname)[1]
         if item_id is None:
-            return no_update
+            return no_update, no_update
         hours = int(value or 24)
         try:
             if kind == "bin":
@@ -401,11 +403,12 @@ def _register_live_range(kind):
                 readings = api_client.get_device_records(item_id, hours)
             names = {d["id"]: d["name"] for d in api_client.list_devices()}
         except (NotAuthenticated, ApiError, ApiUnavailable):
-            # keep the chart as it is; the next page load shows what's wrong
-            return no_update
-        figure = readings_figure(readings, names)
-        figure.update_layout(template=figure_template(color_scheme))
-        return figure
+            # keep the charts as they are; the next page load shows what's wrong
+            return no_update, no_update
+        figures = readings_figure(readings, names), readings_figure(readings, names, GAS_SENSORS)
+        for figure in figures:
+            figure.update_layout(template=figure_template(color_scheme))
+        return figures
 
 
 for _kind in ("bin", "device"):
@@ -1396,27 +1399,30 @@ def save_device_settings(n_clicks, name, bin_id, pathname):
     return no_update, toast("Device settings saved."), device_detail_page(device_id, "settings")
 
 
-# ------------------------------------------------------- placeholder toasts ---
+# ----------------------------------------------------------- notifications ---
 
-PLACEHOLDER_TOASTS = {
-    "export-report": "Report export prepared",
-    "review-alerts": "All alerts marked as reviewed",
-    "notification-button": "No new notifications",
-}
-
-
-def _register_toast(component_id, message):
-    @callback(
-        Output("notify", "sendNotifications", allow_duplicate=True),
-        Input(component_id, "n_clicks"),
-        prevent_initial_call=True,
-    )
-    def show(n_clicks):
-        return toast(message) if n_clicks else no_update
-
-
-for _component_id, _message in PLACEHOLDER_TOASTS.items():
-    _register_toast(_component_id, _message)
+@callback(
+    Output("notify", "sendNotifications", allow_duplicate=True),
+    Input("notification-button", "n_clicks"),
+    prevent_initial_call=True,
+)
+def show_open_alerts(n_clicks):
+    """The bell: the user's open alerts, one line each."""
+    if not n_clicks:
+        return no_update
+    try:
+        alerts = api_client.list_alerts()
+    except NotAuthenticated:
+        return toast(SESSION_EXPIRED, "yellow")
+    except (ApiError, ApiUnavailable) as error:
+        return toast(_api_problem(error), "red")
+    if not alerts:
+        return toast("Nothing needs attention right now.", title="No open alerts")
+    lines = [f"{alert['bin_name']}: {ALERT_TEXT.get(alert['type'], (alert['type'],))[0]}" for alert in alerts[:3]]
+    if len(alerts) > 3:
+        lines.append(f"{len(alerts) - 3} more on the overview page")
+    title = "1 open alert" if len(alerts) == 1 else f"{len(alerts)} open alerts"
+    return toast(" · ".join(lines), "red", title)
 
 
 if __name__ == "__main__":

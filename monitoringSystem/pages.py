@@ -31,9 +31,9 @@ from data import (
     METRICS,
     TELEMETRY,
 )
-from figures import phase_history_figure, readings_figure, sparkline
-from settings import PUBLIC_API_URL
-from theme import icon
+from figures import GAS_SENSORS, daily_averages_figure, phase_history_figure, readings_figure, sparkline
+from settings import PUBLIC_API_URL, SITE_TIMEZONE
+from theme import SENSOR_COLORS, icon
 
 CARD_GRID = {"base": 1, "sm": 2, "lg": 3}
 
@@ -52,6 +52,8 @@ ALERT_TEXT = {
     "too_hot": ("Temperature is too high", "Turn the pile to cool it"),
     "too_dry": ("Moisture is too low", "Add water"),
     "too_wet": ("Moisture is too high", "Turn it and add dry material"),
+    "low_oxygen": ("Oxygen is very low", "Turn the pile to let air in"),
+    "high_co2": ("CO₂ is very high", "Turn the pile to let air in"),
     "offline": ("Sensor offline", "Check its power and Wi-Fi"),
 }
 
@@ -68,20 +70,24 @@ def alerts_grid(alerts):
     return dmc.SimpleGrid(cards, cols={"base": 1, "md": 2})
 
 
-def bin_cards(bins, devices):
-    """One card per bin, each given the devices that are in it."""
-    return [user_bin_card(b, [d for d in devices if d["bin"] and d["bin"]["id"] == b["id"]]) for b in bins]
+def bin_cards(bins, devices, alerts):
+    """One card per bin, each given the devices that are in it and its open alerts."""
+    return [
+        user_bin_card(
+            b,
+            [d for d in devices if d["bin"] and d["bin"]["id"] == b["id"]],
+            [a for a in alerts if a["bin_id"] == b["id"]],
+        )
+        for b in bins
+    ]
 
 
-def overview_cards(bins, devices, alerts, records):
-    """The four cards at the top of the home page. records maps a bin id to its last 24 h of readings."""
+def overview_cards(bins, devices, alerts):
+    """The three cards at the top of the home page."""
     online = [d for d in devices if is_online(d)]
     reporting = len({d["bin"]["id"] for d in online if d["bin"]})
     needs_setup = sum(not d["set_up"] for d in devices)
     high = sum(alert["severity"] == "high" for alert in alerts)
-    # the bin whose newest reading is the hottest
-    hottest = max((b for b in bins if records[b["id"]]), key=lambda b: records[b["id"]][-1]["temperature"], default=None)
-    temps = [r["temperature"] for r in records[hottest["id"]]] if hottest else []
 
     metrics = [
         {"label": "Bins", "value": str(len(bins)), "unit": "", "delta": f"{reporting} reporting",
@@ -90,14 +96,12 @@ def overview_cards(bins, devices, alerts, records):
          "delta": f"{needs_setup} need setup" if needs_setup else "All set up", "icon": "device", "color": "oxygen", "values": []},
         {"label": "Alerts", "value": str(len(alerts)), "unit": "open",
          "delta": f"{high} high priority" if alerts else "All clear", "icon": "alert", "color": "red" if high else "health", "values": []},
-        {"label": "Hottest bin", "value": f"{temps[-1]:.1f}" if temps else "–", "unit": "°C",
-         "delta": hottest["name"] if hottest else "No readings yet", "icon": "temperature", "color": "temperature", "values": temps},
     ]
-    return dmc.SimpleGrid([metric_card(metric) for metric in metrics], cols={"base": 1, "sm": 2, "lg": 4})
+    return dmc.SimpleGrid([metric_card(metric) for metric in metrics], cols={"base": 1, "sm": 3})
 
 
 def dashboard_page(user):
-    now = datetime.now()
+    now = datetime.now(SITE_TIMEZONE)
     header = page_header(
         f"{now:%A} · {now.day} {now:%B}",
         f"Welcome back, {user_name(user)}",
@@ -108,8 +112,6 @@ def dashboard_page(user):
         bins = api_client.list_bins()
         devices = api_client.list_devices()
         alerts = api_client.list_alerts()
-        # one call per bin, for the "Hottest bin" card
-        records = {b["id"]: api_client.get_bin_records(b["id"]) for b in bins}
     except NotAuthenticated:
         return dmc.Stack([header, dmc.Alert("Your session has ended. Please sign in again.", color="yellow")])
     except (ApiError, ApiUnavailable):
@@ -118,7 +120,7 @@ def dashboard_page(user):
     return dmc.Stack(
         [
             header,
-            overview_cards(bins, devices, alerts, records),
+            overview_cards(bins, devices, alerts),
             dmc.Box(
                 [
                     section_header("Needs attention"),
@@ -128,7 +130,7 @@ def dashboard_page(user):
                 ]
             ),
             dmc.Box([section_header("Compost bins", "View all", "/bins"),
-                     dmc.SimpleGrid(bin_cards(bins, devices), cols=CARD_GRID) if bins else dmc.Text("No bins yet.", c="dimmed", size="sm")]),
+                     dmc.SimpleGrid(bin_cards(bins, devices, alerts), cols=CARD_GRID) if bins else dmc.Text("No bins yet.", c="dimmed", size="sm")]),
             dmc.Box([section_header("Devices", "View all", "/devices"),
                      dmc.SimpleGrid([paired_device_card(d) for d in devices], cols=CARD_GRID) if devices else dmc.Text("No devices yet.", c="dimmed", size="sm")]),
         ],
@@ -146,13 +148,14 @@ def bins_page():
     try:
         user_bins = api_client.list_bins()
         devices = api_client.list_devices()
+        alerts = api_client.list_alerts()
     except NotAuthenticated:
         return dmc.Box([header, dmc.Alert("You are not authenticated. Please sign in again.", color="orange")])
     except (ApiError, ApiUnavailable):
         return dmc.Box([header, dmc.Alert("Something went wrong. Please try again in a bit.", color="red")])
     if not user_bins:
         return dmc.Box([header, dmc.Text("You do not have any added bins yet.")])
-    return dmc.Box([header, dmc.SimpleGrid(bin_cards(user_bins, devices), cols=CARD_GRID)])
+    return dmc.Box([header, dmc.SimpleGrid(bin_cards(user_bins, devices, alerts), cols=CARD_GRID)])
 
 
 def devices_page():
@@ -229,8 +232,9 @@ def readings_strip(readings):
             chip("Moisture", "moisture_percent", "%", "moisture"),
             chip("Oxygen", "o2_percent", "%", "oxygen"),
             chip("CO₂", "co2_percent", "%", "co2"),
+            chip("NH₃", "nh3_ratio", "", "nh3"),
         ],
-        cols={"base": 2, "md": 4},
+        cols={"base": 2, "md": 5},
         mb="md",
     )
 
@@ -252,7 +256,8 @@ def live_panel(kind, readings, device_names):
         mb="sm",
     )
     chart = plot(readings_figure(readings, device_names), name=f"{kind}-live-chart")
-    return dmc.Box([readings_strip(readings), dmc.Card([toolbar, chart], padding="md")])
+    gas_chart = plot(readings_figure(readings, device_names, GAS_SENSORS), name=f"{kind}-gas-chart")
+    return dmc.Box([readings_strip(readings), dmc.Card([toolbar, chart, gas_chart], padding="md")])
 
 
 def maintenance_panel():
@@ -269,6 +274,15 @@ def maintenance_panel():
     )
 
 
+# the daily averages GET /bins/{id}/history returns besides temperature
+HISTORY_MOISTURE = [("Moisture", "avg_moisture", SENSOR_COLORS["moisture"], "%")]
+HISTORY_GASES = [
+    ("Oxygen", "avg_o2", SENSOR_COLORS["oxygen"], "%"),
+    ("CO₂", "avg_co2", SENSOR_COLORS["co2"], "%"),
+    ("NH₃", "avg_nh3", SENSOR_COLORS["nh3"], ""),
+]
+
+
 def history_panel(history, subtitle=None):
     temperature = dmc.Card(
         [
@@ -277,12 +291,15 @@ def history_panel(history, subtitle=None):
         ],
         padding="md",
     )
-    # needs the prediction model (D6); until then, say so instead of a made-up score
-    health = dmc.Card(
-        [_card_title("Quality score", "Compost health"), dmc.Text("Coming with the prediction model.", c="dimmed", size="sm", mt="md")],
+    moisture = dmc.Card(
+        [_card_title("Daily average", "Moisture"), plot(daily_averages_figure(history, HISTORY_MOISTURE))],
         padding="md",
     )
-    return dmc.SimpleGrid([temperature, health], cols={"base": 1, "md": 2})
+    gases = dmc.Card(
+        [_card_title("Daily average", "Gases"), plot(daily_averages_figure(history, HISTORY_GASES))],
+        padding="md",
+    )
+    return dmc.Stack([temperature, dmc.SimpleGrid([moisture, gases], cols={"base": 1, "md": 2})], gap="md")
 
 
 def devices_panel():
@@ -479,7 +496,6 @@ def detail_page(kind, item_id, tab):
         "Compost bin" if is_bin else "Monitoring device",
         "Bin 1" if is_bin else "Outer Sensor",
         "UNRAM · Peak decomposition" if is_bin else "Bin 1 · ESP32-C3",
-        button("Export report", "default", icon_name="download", component_id="export-report"),
     )
     return dmc.Box([header, detail_tabs(kind, tab), panel])
 
@@ -493,6 +509,7 @@ def bin_detail_page(bin_id, tab):
         all_devices = api_client.list_devices() if tab in ("devices", "live") else []
         readings = api_client.get_bin_records(bin_id) if tab == "live" else []
         history = api_client.get_bin_history(bin_id) if tab == "history" else []
+        alerts = api_client.list_alerts(bin_id=bin_id) if tab == "live" else []
     except NotAuthenticated:
         return dmc.Alert("Your session has ended. Please sign in again.", color="yellow")
     except ApiError:
@@ -512,6 +529,8 @@ def bin_detail_page(bin_id, tab):
         panel = bin_devices_panel(bin_data, [d for d in all_devices if d["bin"] and d["bin"]["id"] == bin_id])
     else:
         panel = live_panel("bin", readings, {d["id"]: d["name"] for d in all_devices})
+        if alerts:
+            panel = dmc.Stack([dmc.Box([section_header("Needs attention"), alerts_grid(alerts)]), panel], gap="lg")
 
     header = page_header("Compost bin", bin_data["name"], bin_data["location"])
     return dmc.Box([header, detail_tabs("bin", tab), panel])

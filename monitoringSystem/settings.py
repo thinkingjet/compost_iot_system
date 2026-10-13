@@ -7,6 +7,7 @@ win over the file.
 """
 import os
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
@@ -23,3 +24,6 @@ WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://compostiq.win").rstrip("/")
 DASHBOARD_SECRET_KEY = os.environ.get("DASHBOARD_SECRET_KEY")
 # how long the session cookie lasts - matches the API's 8-hour token
 SESSION_HOURS = 8
+# times are shown in the pilot site's clock (WITA, UTC+8), the same zone the
+# API uses for the days in /bins/{id}/history
+SITE_TIMEZONE = ZoneInfo("Asia/Makassar")

@@ -4,6 +4,7 @@ from itertools import count
 import dash_mantine_components as dmc
 from dash import dcc
 from figures import GRAPH_CONFIG, sparkline
+from settings import SITE_TIMEZONE
 from theme import SENSOR_COLORS, icon
 
 # every dcc.Graph gets a {"type": "graph"} id so app.py can re-template all of
@@ -170,9 +171,15 @@ def bin_card(bin_data):
     )
     return _card_link(card, "/bin/live")
 
-def user_bin_card(bin_data, devices):
-    """A real bin from GET /bins, with the devices from GET /devices that are in it."""
+def user_bin_card(bin_data, devices, alerts):
+    """A real bin from GET /bins, with its devices from GET /devices and its open alerts."""
     count = f"{len(devices)} device" if len(devices) == 1 else f"{len(devices)} devices"
+    if alerts:
+        high = any(alert["severity"] == "high" for alert in alerts)
+        label = "1 alert" if len(alerts) == 1 else f"{len(alerts)} alerts"
+        alert_status = dmc.Badge(label, color="red" if high else "orange", variant="light", size="sm")
+    else:
+        alert_status = dmc.Badge("No alerts", color="green", variant="light", size="sm")
     if not devices:
         status = dmc.Badge("No devices", color="gray", variant="light", size="sm")
     elif any(is_online(device) for device in devices):
@@ -201,7 +208,7 @@ def user_bin_card(bin_data, devices):
                 p="md",
                 withBorder=True,
             ),
-            dmc.Group(status, mt="md"),
+            dmc.Group([status, alert_status], justify="space-between", mt="md"),
         ],
         padding="md",
     )
@@ -228,7 +235,8 @@ def device_card(device):
     return _card_link(card, "/device/live")
 
 
-# a device that checked in this recently counts as online
+# a device that checked in this recently counts as online; the same as the
+# API's OFFLINE_AFTER (routers/alerts.py), so the badge and the alert agree
 ONLINE_WITHIN = timedelta(minutes=10)
 
 
@@ -241,7 +249,7 @@ def time_ago(iso):
         return f"{seconds // 60} min ago"
     if seconds < 86400:
         return f"{seconds // 3600} h ago"
-    return datetime.fromisoformat(iso).strftime("%d %b %Y")
+    return datetime.fromisoformat(iso).astimezone(SITE_TIMEZONE).strftime("%d %b %Y")
 
 
 def is_online(device):
@@ -292,9 +300,9 @@ def paired_device_card(device):
 
 
 def alert_card(kind, title, detail, priority):
-    """kind is an alert type from GET /alerts: too_hot, too_dry, too_wet or offline."""
-    color = {"too_hot": "red", "offline": "gray"}.get(kind, "blue")
-    icon_name = {"too_hot": "temperature", "offline": "device"}.get(kind, "droplet")
+    """kind is an alert type from GET /alerts, e.g. too_hot, low_oxygen or offline."""
+    color = {"too_hot": "red", "low_oxygen": "red", "offline": "gray"}.get(kind, "blue")
+    icon_name = {"too_hot": "temperature", "low_oxygen": "wind", "high_co2": "wind", "offline": "device"}.get(kind, "droplet")
     return dmc.Card(
         dmc.Group(
             [
@@ -381,7 +389,6 @@ def header_actions(public, signed_in):
     """The header's right-hand side, which depends on the shell and the user."""
     if not public:
         return [
-            dmc.Badge("All systems online", color="green", variant="dot", visibleFrom="sm"),
             dmc.ActionIcon(icon("bell", 18), id="notification-button", variant="default", size="lg", n_clicks=0, **{"aria-label": "Notifications"}),
         ]
     if signed_in:

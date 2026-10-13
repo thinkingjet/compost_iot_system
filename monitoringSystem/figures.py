@@ -1,5 +1,8 @@
+from datetime import datetime
+
 import plotly.graph_objects as go
 from data import HISTORICAL, TELEMETRY
+from settings import SITE_TIMEZONE
 from theme import SENSOR_COLORS, rgba
 
 GRAPH_CONFIG = {
@@ -11,6 +14,15 @@ GRAPH_CONFIG = {
 # 55 °C sustained is the EPA Class A pathogen-kill target, the same line the
 # simulator draws on its temperature chart.
 PATHOGEN_KILL_TEMP = 55
+
+
+def site_time(iso):
+    """An API timestamp as the site's local clock time.
+
+    Plotly ignores a timestamp's UTC offset and draws the clock time as
+    written, so it's converted to the site's timezone first.
+    """
+    return datetime.fromisoformat(iso).astimezone(SITE_TIMEZONE).replace(tzinfo=None)
 
 
 def sparkline(values, color="health", height=50):
@@ -63,8 +75,21 @@ def telemetry_figure(hours=24):
     return figure
 
 
-def readings_figure(readings, device_names):
-    """Temperature and moisture from GET /bins/{id}/records or /devices/{id}/records.
+# Temperature and moisture share a scale; the gases are much smaller numbers,
+# so they get their own chart instead of being flattened along the bottom.
+CLIMATE_SENSORS = (
+    ("Temperature", "temperature", SENSOR_COLORS["temperature"], "°C"),
+    ("Moisture", "moisture_percent", SENSOR_COLORS["moisture"], "%"),
+)
+GAS_SENSORS = (
+    ("Oxygen", "o2_percent", SENSOR_COLORS["oxygen"], "%"),
+    ("CO₂", "co2_percent", SENSOR_COLORS["co2"], "%"),
+    ("NH₃", "nh3_ratio", SENSOR_COLORS["nh3"], ""),
+)
+
+
+def readings_figure(readings, device_names, sensors=CLIMATE_SENSORS):
+    """Readings from GET /bins/{id}/records or /devices/{id}/records, one line per sensor.
 
     A bin can hold several sensors: each gets its own lines, or they would zigzag
     between the two. device_names maps a device id to its name for the legend.
@@ -74,13 +99,10 @@ def readings_figure(readings, device_names):
     for number, device_id in enumerate(device_ids):
         rows = [r for r in readings if r["device_id"] == device_id]
         suffix = f" · {device_names.get(device_id) or 'Sensor'}" if len(device_ids) > 1 else ""
-        for name, key, color, unit in (
-            ("Temperature", "temperature", SENSOR_COLORS["temperature"], "°C"),
-            ("Moisture", "moisture_percent", SENSOR_COLORS["moisture"], "%"),
-        ):
+        for name, key, color, unit in sensors:
             figure.add_trace(
                 go.Scatter(
-                    x=[r["timestamp"] for r in rows],
+                    x=[site_time(r["timestamp"]) for r in rows],
                     y=[r[key] for r in rows],
                     name=name + suffix,
                     mode="lines",
@@ -131,6 +153,31 @@ def phase_history_figure(history):
         annotation_font={"color": "#fa5252", "size": 10},
     )
     figure.update_layout(height=260, legend={"orientation": "h", "x": 0, "y": 1.14})
+    return figure
+
+
+def daily_averages_figure(history, sensors):
+    """Daily averages from GET /bins/{id}/history, one line per sensor.
+
+    sensors is a list of (name, key, color, unit), like CLIMATE_SENSORS.
+    """
+    days = [day["day"] for day in history]
+    figure = go.Figure(
+        [
+            go.Scatter(
+                x=days,
+                y=[day[key] for day in history],
+                mode="lines+markers",
+                name=name,
+                line={"color": color, "width": 2},
+                hovertemplate=f"%{{x}}<br>%{{y:.2f}}{unit}<extra>{name}</extra>",
+            )
+            for name, key, color, unit in sensors
+        ]
+    )
+    if not history:
+        figure.add_annotation(text="No readings in this period", showarrow=False, xref="paper", yref="paper", x=0.5, y=0.5)
+    figure.update_layout(height=260, hovermode="x unified", legend={"orientation": "h", "x": 0, "y": 1.14})
     return figure
 
 

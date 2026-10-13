@@ -58,6 +58,10 @@ class DailyReading(BaseModel):
     day: datetime.date
     avg_temp: float
     max_temp: float
+    avg_moisture: float
+    avg_o2: float
+    avg_co2: float
+    avg_nh3: float
 
 
 BIN_COLUMNS = "id, name, location, country_code"
@@ -191,7 +195,11 @@ def get_bin_history(bin_id: uuid.UUID, days: Annotated[int, Query(ge=1, le=365)]
                 """
                 SELECT (timestamp AT TIME ZONE :tz)::date AS day,
                     avg(temperature) AS avg_temp,
-                    max(temperature) AS max_temp
+                    max(temperature) AS max_temp,
+                    avg(moisture_percent) AS avg_moisture,
+                    avg(o2_percent) AS avg_o2,
+                    avg(co2_percent) AS avg_co2,
+                    avg(nh3_ratio) AS avg_nh3
                 FROM records
                 WHERE bin_id = :bin_id AND timestamp >= :since
                 GROUP BY day
