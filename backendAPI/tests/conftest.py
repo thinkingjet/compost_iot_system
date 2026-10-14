@@ -113,13 +113,11 @@ def new_email():
         db.execute(text("DELETE FROM devices WHERE mac LIKE :like"), {"like": TEST_MAC_LIKE})
 
 
-@pytest.fixture
-def account(client, new_email):
-    """A registered user: {"email", "password", "user", "headers"}."""
-    email = new_email()
+def _register(client, email, **fields):
+    """Registers a user: {"email", "password", "user", "headers"}."""
     response = client.post(
         "/auth/register",
-        json={"email": email, "password": TEST_PASSWORD, "display_name": "Test User"},
+        json={"email": email, "password": TEST_PASSWORD, "display_name": "Test User", **fields},
     )
     assert response.status_code == 201, response.text
     body = response.json()
@@ -129,3 +127,15 @@ def account(client, new_email):
         "user": body["user"],
         "headers": {"Authorization": f"Bearer {body['access_token']}"},
     }
+
+
+@pytest.fixture
+def account(client, new_email):
+    """A registered compost owner: {"email", "password", "user", "headers"}."""
+    return _register(client, new_email())
+
+
+@pytest.fixture
+def researcher(client, new_email):
+    """A registered researcher account, shaped like `account`."""
+    return _register(client, new_email(), role="researcher")

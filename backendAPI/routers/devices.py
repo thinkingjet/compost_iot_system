@@ -24,10 +24,11 @@ from pydantic import BaseModel, BeforeValidator, Field
 from sqlalchemy import text
 
 from database import db_engine
-from routers.auth import current_user
+from routers.auth import current_user, owner_only
 from routers.bins import owned_bin, READING_COLUMNS, Reading
 
-router = APIRouter(prefix="/devices", tags=["devices"])
+# owners only: a researcher account has no devices
+router = APIRouter(prefix="/devices", tags=["devices"], dependencies=[Depends(owner_only)])
 
 NOT_FOUND = HTTPException(status_code=404, detail="Device not found.")
 PAIRED_KEY_REFUSED = HTTPException(
