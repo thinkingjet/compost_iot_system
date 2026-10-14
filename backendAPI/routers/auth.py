@@ -7,7 +7,7 @@ token cannot write readings and a device key cannot reach anything here.
 """
 import datetime
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -50,6 +50,7 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: Password
     display_name: DisplayName = None
+    role: Literal["owner", "researcher"] = "owner"
 
 
 class LoginRequest(BaseModel):
@@ -75,6 +76,7 @@ class User(BaseModel):
     id: uuid.UUID
     email: str
     display_name: str | None
+    role: str
 
 
 class Token(BaseModel):
@@ -87,7 +89,7 @@ class Token(BaseModel):
 # ----------------------------------------------------------------- helpers ---
 
 def _user(row):
-    return User(id=row.id, email=row.email, display_name=row.display_name)
+    return User(id=row.id, email=row.email, display_name=row.display_name, role=row.role)
 
 
 def _password_matches(password, password_hash):
@@ -137,7 +139,7 @@ def current_user(credentials: HTTPAuthorizationCredentials | None = Depends(bear
 
     with db_engine.connect() as db:
         row = db.execute(
-            text("SELECT id, email, display_name, password_hash FROM users WHERE id = :id"),
+            text("SELECT id, email, display_name, role, password_hash FROM users WHERE id = :id"),
             {"id": user_id},
         ).first()
     if row is None:
@@ -155,15 +157,16 @@ def register(body: RegisterRequest):
             row = db.execute(
                 text(
                     """
-                    INSERT INTO users (email, password_hash, display_name)
-                    VALUES (:email, :password_hash, :display_name)
-                    RETURNING id, email, display_name
+                    INSERT INTO users (email, password_hash, display_name, role)
+                    VALUES (:email, :password_hash, :display_name, :role)
+                    RETURNING id, email, display_name, role
                     """
                 ),
                 {
                     "email": email,
                     "password_hash": password_hasher.hash(body.password),
                     "display_name": body.display_name,
+                    "role": body.role,
                 },
             ).first()
     except IntegrityError:
@@ -175,7 +178,7 @@ def register(body: RegisterRequest):
 def login(body: LoginRequest):
     with db_engine.connect() as db:
         row = db.execute(
-            text("SELECT id, email, display_name, password_hash FROM users WHERE lower(email) = :email"),
+            text("SELECT id, email, display_name, role, password_hash FROM users WHERE lower(email) = :email"),
             {"email": body.email.strip().lower()},
         ).first()
 
@@ -195,7 +198,7 @@ def read_me(user=Depends(current_user)):
 def update_me(body: ProfileUpdate, user=Depends(current_user)):
     with db_engine.begin() as db:
         row = db.execute(
-            text("UPDATE users SET display_name = :display_name WHERE id = :id RETURNING id, email, display_name"),
+            text("UPDATE users SET display_name = :display_name WHERE id = :id RETURNING id, email, display_name, role"),
             {"display_name": body.display_name, "id": user.id},
         ).first()
     return _user(row)

@@ -479,10 +479,11 @@ def sign_in(n_clicks, email_enter, password_enter, email, password, search):
     State("register-name", "value"),
     State("register-password", "value"),
     State("register-confirm", "value"),
+    State("register-role", "value"),
     running=[(Output("register-submit", "loading"), True, False)],
     prevent_initial_call=True,
 )
-def sign_up(n_clicks, enter_1, enter_2, enter_3, enter_4, email, name, password, confirm):
+def sign_up(n_clicks, enter_1, enter_2, enter_3, enter_4, email, name, password, confirm, role):
     if not _clicked():
         return (no_update,) * 7
 
@@ -503,7 +504,7 @@ def sign_up(n_clicks, enter_1, enter_2, enter_3, enter_4, email, name, password,
         return answer(**errors)
 
     try:
-        auth.register(email, password, name or None)
+        auth.register(email, password, name or None, role or "owner")
     except ApiError as error:
         if error.status == 409:
             taken = ["An account with this email already exists. ", dmc.Anchor("Sign in?", href="/login", fw=600, size="sm")]

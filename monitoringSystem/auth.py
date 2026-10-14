@@ -22,9 +22,9 @@ def _start_session(token):
     return token["user"]
 
 
-def register(email, password, display_name=None):
+def register(email, password, display_name=None, role="owner"):
     """Creates the account and signs the user in straight away."""
-    return _start_session(api_client.register(email, password, display_name))
+    return _start_session(api_client.register(email, password, display_name, role))
 
 
 def login(email, password):
