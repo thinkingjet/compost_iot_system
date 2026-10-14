@@ -2,7 +2,7 @@
 
 The monitoring dashboard, built with [Plotly Dash](https://dash.plotly.com/) and [dash-mantine-components](https://www.dash-mantine-components.com/) 2.x (Mantine v8).
 
-Signed out, it is a public site. Signed in, a user reaches their own pages. Accounts are real and come from the API; the bins, devices and charts behind the sign-in still show placeholder data (`data.py`) until the API serves them.
+Signed out, it is a public site. Signed in, a user reaches their own bins, devices and readings through the API.
 
 ## Run locally
 
@@ -38,7 +38,7 @@ Open `http://127.0.0.1:8050/login`, and create an account or sign in as the deve
 | `/` | public | no page of its own: redirects to `/dashboard` when signed in, otherwise to the public website (`WEBSITE_URL`, [website/](../website/README.md)) |
 | `/login`, `/register` | public | a signed-in user is sent on to `/dashboard` |
 | `/dashboard` | private | overview |
-| `/bins`, `/bins/new`, `/bin/<id>/<tab>` | private | bins |
+| `/bins`, `/bins/new`, `/bin/<id>/<tab>` | private | list bins; create one with a name, location and country; view readings and devices; edit its details in settings |
 | `/devices` | private | the user's devices from the API; unfinished ones are marked *Needs setup*, the rest link to their device page |
 | `/devices/add` | private | the pairing wizard: get a code → the device redeems it → confirm its hardware ID → name and bin → wait for the first reading. `?device=<id>` resumes setup for a device paired earlier |
 | `/devices/register` | private | registering without pairing: name and bin → the device's API key, shown once with the endpoint and an example → wait for the first reading. `?device=<id>` gives a registered device a new bin after its bin was deleted |
@@ -67,7 +67,7 @@ A signed-out visitor who opens a private page is sent to `/login?next=<page>` an
 - `settings.py`: environment variables, loaded from `.env`.
 - `theme.py`: Mantine theme, Plotly templates and the icon set (Tabler, through DashIconify).
 - `figures.py`: Plotly figure factories.
-- `data.py`: placeholder data for the private pages.
+- `data.py`: legacy placeholder data for older mock components.
 - `assets/styles.css`: the few styles Mantine props cannot reach.
 
 One `MantineProvider`, one `AppShell` and one `NotificationContainer` wrap the whole app. The public pages use the same shell with the navbar hidden.
