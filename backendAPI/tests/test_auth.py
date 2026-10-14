@@ -62,6 +62,16 @@ def test_register_stores_a_lower_case_email_and_an_argon2_hash(client, new_email
     assert TEST_PASSWORD not in stored
 
 
+def test_register_picks_a_role_and_defaults_to_owner(client, new_email):
+    owner = client.post("/auth/register", json={"email": new_email(), "password": TEST_PASSWORD})
+    researcher = client.post("/auth/register", json={"email": new_email(), "password": TEST_PASSWORD, "role": "researcher"})
+    admin = client.post("/auth/register", json={"email": new_email(), "password": TEST_PASSWORD, "role": "admin"})
+
+    assert owner.json()["user"]["role"] == "owner"
+    assert researcher.json()["user"]["role"] == "researcher"
+    assert admin.status_code == 422
+
+
 def test_register_with_a_used_email_is_a_conflict(client, account):
     response = client.post("/auth/register", json={"email": account["email"], "password": TEST_PASSWORD})
     assert response.status_code == 409
