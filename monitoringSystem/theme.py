@@ -118,6 +118,7 @@ _ICONS = {
     "plug": "tabler:plug",
     "chart": "tabler:chart-line",
     "map": "tabler:map-2",
+    "book": "tabler:book",
 }
 
 

@@ -33,20 +33,24 @@ Open `http://127.0.0.1:8050/login`, and create an account or sign in as the deve
 
 ## Pages
 
+Every account is one of two types (`users.role`, chosen at sign-up), and each type has its own pages, navbar and home page. The two don't overlap: an owner can't open the research pages, and a researcher can't open the bins and devices. Only `/account` is in both.
+
 | Route | Access | Page |
 |---|---|---|
-| `/` | public | no page of its own: redirects to `/dashboard` when signed in, otherwise to the public website (`WEBSITE_URL`, [website/](../website/README.md)) |
-| `/login`, `/register` | public | a signed-in user is sent on to `/dashboard` |
-| `/dashboard` | private | overview |
-| `/bins`, `/bins/new`, `/bin/<id>/<tab>` | private | list bins; create one with a name, location and country; view readings and devices; edit its details in settings |
-| `/devices` | private | the user's devices from the API; unfinished ones are marked *Needs setup*, the rest link to their device page |
-| `/devices/add` | private | the pairing wizard: get a code → the device redeems it → confirm its hardware ID → name and bin → wait for the first reading. `?device=<id>` resumes setup for a device paired earlier |
-| `/devices/register` | private | registering without pairing: name and bin → the device's API key, shown once with the endpoint and an example → wait for the first reading. `?device=<id>` gives a registered device a new bin after its bin was deleted |
-| `/device/<id>/<tab>` | private | one device: live readings, history, settings (rename, move to another bin). A registered device's settings also have **New API key**: confirm, then the replacement key, shown once (the old one stops working) |
-| `/account` | private | display name, change password, delete account |
+| `/` | public | no page of its own: redirects to the user's home page (`/dashboard` for an owner, `/research` for a researcher) when signed in, otherwise to the public website (`WEBSITE_URL`, [website/](../website/README.md)) |
+| `/login`, `/register` | public | a signed-in user is sent on to their home page |
+| `/dashboard` | owner | overview |
+| `/bins`, `/bins/new`, `/bin/<id>/<tab>` | owner | list bins; create one with a name, location and country; view readings and devices; edit its details in settings |
+| `/devices` | owner | the user's devices from the API; unfinished ones are marked *Needs setup*, the rest link to their device page |
+| `/devices/add` | owner | the pairing wizard: get a code → the device redeems it → confirm its hardware ID → name and bin → wait for the first reading. `?device=<id>` resumes setup for a device paired earlier |
+| `/devices/register` | owner | registering without pairing: name and bin → the device's API key, shown once with the endpoint and an example → wait for the first reading. `?device=<id>` gives a registered device a new bin after its bin was deleted |
+| `/device/<id>/<tab>` | owner | one device: live readings, history, settings (rename, move to another bin). A registered device's settings also have **New API key**: confirm, then the replacement key, shown once (the old one stops working) |
+| `/research` | researcher | registering for a research API key. Empty for now (*Coming soon*); the key work fills in `research-keys` |
+| `/research/docs` | researcher | the research API's docs. Empty for now |
+| `/account` | owner, researcher | display name, account type, change password, delete account |
 | anything else | | 404 page |
 
-A signed-out visitor who opens a private page is sent to `/login?next=<page>` and returned to that page after signing in.
+A signed-out visitor who opens a private page is sent to `/login?next=<page>` and returned to that page after signing in, if their account type has it; otherwise they land on their home page. A signed-in user who opens the other type's page is sent to their own home page.
 
 ## How sign-in works
 

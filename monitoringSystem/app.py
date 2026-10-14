@@ -6,9 +6,14 @@ One MantineProvider and one AppShell (header + navbar) wrap the whole app;
 decides who may see it: the public pages (/login, /register) get the
 header only, everything else needs a sign-in and gets the navbar too.
 
+What a signed-in user can open depends on their account type, and the two
+don't overlap: an owner has the bins and devices pages, a researcher has the
+research pages. Each type has its own pages, navbar and home page (ROUTES,
+HOME); only /account is in both.
+
 The landing page is not part of the dashboard: it is the static website in
 website/public, on compostiq.win. The dashboard's own "/" sends signed-out
-visitors there and signed-in users to /dashboard.
+visitors there and signed-in users to their home page.
 
 Run it with:  python monitoringSystem/app.py
 """
@@ -24,7 +29,7 @@ import auth
 import dash_mantine_components as dmc
 import flask
 from api_client import ApiError, ApiUnavailable, NotAuthenticated
-from components import NAVBAR, app_shell, header_actions, navbar_account
+from components import NAVBAR, account_type, app_shell, header_actions, navbar_account, navbar_links
 from dash import (
     ALL,
     Dash,
@@ -57,6 +62,8 @@ from pages import (
     not_found_page,
     register_device_page,
     register_page,
+    research_docs_page,
+    research_keys_page,
 )
 from settings import DASHBOARD_SECRET_KEY, SESSION_HOURS, WEBSITE_URL
 from theme import FONT_URL, THEME, figure_template, register_figure_templates
@@ -140,25 +147,35 @@ app.layout = dmc.MantineProvider(
 )
 
 PUBLIC_ROUTES = {"/login", "/register"}
-AFTER_SIGN_IN = "/dashboard"
 
-
-def home():
-    """Where "/" leads: the dashboard if signed in, else the public website."""
-    return AFTER_SIGN_IN if auth.is_signed_in() else WEBSITE_URL
-
-# private pages; the two in USER_PAGES are built from the signed-in user
-PRIVATE_ROUTES = {
+# The private pages, one table per account type (users.role). They don't
+# overlap: an owner can't open the research pages, nor a researcher the bins
+# and devices. /account is the only page both have.
+OWNER_ROUTES = {
+    "/dashboard": dashboard_page,
     "/bins": bins_page,
     "/bins/new": new_bin_page,
     "/devices": devices_page,
     "/devices/add": add_device_page,
     "/devices/register": register_device_page,
-}
-USER_PAGES = {
-    "/dashboard": dashboard_page,
     "/account": account_page,
 }
+RESEARCHER_ROUTES = {
+    "/research": research_keys_page,
+    "/research/docs": research_docs_page,
+    "/account": account_page,
+}
+ROUTES = {"owner": OWNER_ROUTES, "researcher": RESEARCHER_ROUTES}
+# where each account type lands after signing in
+HOME = {"owner": "/dashboard", "researcher": "/research"}
+# the pages built from the signed-in user; the rest take no arguments
+USER_PAGES = {dashboard_page, account_page}
+
+
+def home(user=None):
+    """Where "/" leads: the signed-in user's home page, else the public website."""
+    user = user or auth.current_user()
+    return HOME[account_type(user)] if user else WEBSITE_URL
 
 SESSION_EXPIRED = "Your session expired, please sign in again."
 API_DOWN = "Can’t reach CompostIQ right now. Try again in a moment."
@@ -189,12 +206,14 @@ def login_url(next_path):
     return f"/login?{urlencode({'next': next_path})}"
 
 
-def next_page(search):
-    """Where to go after signing in: ?next= if it is a path on this site."""
+def next_page(search, user):
+    """Where to go after signing in: ?next= if it is a page on this site that
+    the user's account type has, else their home page."""
     target = parse_qs((search or "").lstrip("?")).get("next", [""])[0]
+    kind = account_type(user)
     # a lone leading slash only - "//host" and "/\\host" would leave the site
-    if not target.startswith("/") or target[1:2] in ("/", "\\") or target.split("?")[0] in PUBLIC_ROUTES:
-        return AFTER_SIGN_IN
+    if not target.startswith("/") or target[1:2] in ("/", "\\") or not can_open(target.split("?")[0], kind):
+        return HOME[kind]
     return target
 
 
@@ -213,15 +232,21 @@ def _detail_route(pathname):
     return None
 
 
+def can_open(pathname, kind):
+    """Whether an account type has this page. Bin and device pages are owners'."""
+    if _detail_route(pathname) is not None:
+        return kind == "owner"
+    return pathname in ROUTES[kind]
+
+
 def is_private(pathname):
-    return pathname in USER_PAGES or pathname in PRIVATE_ROUTES or _detail_route(pathname) is not None
+    return any(can_open(pathname, kind) for kind in ROUTES)
 
 
 def private_page(pathname, user):
-    if pathname in USER_PAGES:
-        return USER_PAGES[pathname](user)
-    if pathname in PRIVATE_ROUTES:
-        return PRIVATE_ROUTES[pathname]()
+    page = ROUTES[account_type(user)].get(pathname)
+    if page is not None:
+        return page(user) if page in USER_PAGES else page()
     kind, item_id, tab = _detail_route(pathname)
     if item_id is None:
         # an old mock link such as /bin/live
@@ -236,6 +261,7 @@ def private_page(pathname, user):
 @callback(
     Output("page-root", "children"),
     Output("header-actions", "children"),
+    Output("navbar-links", "children"),
     Output("navbar-account", "children"),
     Output("shell", "data"),
     Output("redirect", "data"),
@@ -247,26 +273,32 @@ def render_page(pathname):
 
     def redirect(target, note=no_update):
         # leave the current page alone; the redirect renders the next one
-        return no_update, no_update, no_update, no_update, goto(target), note
+        return no_update, no_update, no_update, no_update, no_update, goto(target), note
 
     def public(page, signed_in):
-        return page, header_actions(True, signed_in), None, {"public": True}, no_update, no_update
+        return page, header_actions(True, signed_in), None, None, {"public": True}, no_update, no_update
+
+    def private(page, user, note=no_update):
+        # the header and navbar are the user's account type's
+        kind = account_type(user)
+        return page, header_actions(False, True, kind), navbar_links(kind), navbar_account(user), {"public": False}, no_update, note
 
     if pathname == "/":
         # reached from inside the app: the logo, "Back to home", signing out
         return redirect(home())
 
     if pathname in PUBLIC_ROUTES:
-        if auth.is_signed_in():
-            return redirect(AFTER_SIGN_IN)
+        user = auth.current_user()
+        if user is not None:
+            return redirect(home(user))
         return public(login_page() if pathname == "/login" else register_page(), False)
 
     if not is_private(pathname):
         # an unknown route: a 404 in whichever shell the visitor is already in
         user = auth.current_user()
         if user is None:
-            return public(not_found_page(False), False)
-        return not_found_page(True), header_actions(False, True), navbar_account(user), {"public": False}, no_update, no_update
+            return public(not_found_page(), False)
+        return private(not_found_page(home(user)), user)
 
     # a private page: the guard. This is for the user's experience only -
     # the API checks the token on every call and is what keeps data private.
@@ -281,7 +313,11 @@ def render_page(pathname):
         # the pages still show mock data, so carry on with what the session knows
         user = auth.current_user()
         note = toast(API_DOWN, "red")
-    return private_page(pathname, user), header_actions(False, True), navbar_account(user), {"public": False}, no_update, note
+    if not can_open(pathname, account_type(user)):
+        # the other account type's page, e.g. a researcher opening /bins or
+        # an owner opening /research: off to their own home page instead
+        return redirect(home(user), note)
+    return private(private_page(pathname, user), user, note)
 
 
 # Redirects run in the browser. A callback cannot send render_page's own
@@ -452,14 +488,14 @@ def sign_in(n_clicks, email_enter, password_enter, email, password, search):
     if not (email or "").strip() or not password:
         return no_update, "Enter your email and password.", False
     try:
-        auth.login(email.strip(), password)
+        user = auth.login(email.strip(), password)
     except ApiError as error:
         # 401: the API answers the same for an unknown email and a wrong password
         message = "Email or password is incorrect." if error.status in (401, 422) else _api_problem(error)
         return no_update, message, False
     except ApiUnavailable as error:
         return no_update, _api_problem(error), False
-    return goto(next_page(search)), no_update, True
+    return goto(next_page(search, user)), no_update, True
 
 
 @callback(
@@ -504,7 +540,7 @@ def sign_up(n_clicks, enter_1, enter_2, enter_3, enter_4, email, name, password,
         return answer(**errors)
 
     try:
-        auth.register(email, password, name or None, role or "owner")
+        user = auth.register(email, password, name or None, role or "owner")
     except ApiError as error:
         if error.status == 409:
             taken = ["An account with this email already exists. ", dmc.Anchor("Sign in?", href="/login", fw=600, size="sm")]
@@ -521,7 +557,7 @@ def sign_up(n_clicks, enter_1, enter_2, enter_3, enter_4, email, name, password,
         return answer(alert=_api_problem(error))
     except ApiUnavailable as error:
         return answer(alert=_api_problem(error))
-    return goto(AFTER_SIGN_IN), None, True, None, None, None, None
+    return goto(home(user)), None, True, None, None, None, None
 
 
 @callback(
