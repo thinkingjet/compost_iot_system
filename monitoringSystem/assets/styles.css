@@ -38,3 +38,8 @@
   border-color: var(--mantine-primary-color-filled);
   transform: translateY(-1px);
 }
+
+/* The account type picker on the sign-up page: the chosen card is outlined. */
+.ciq-role-card[data-checked] {
+  border-color: var(--mantine-primary-color-filled);
+}

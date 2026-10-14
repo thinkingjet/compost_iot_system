@@ -74,8 +74,9 @@ def _request(method, path, json=None, signed_in=True):
 
 # -------------------------------------------------------------------- auth ---
 
-def register(email, password, display_name=None):
-    body = {"email": email, "password": password, "display_name": display_name}
+def register(email, password, display_name=None, role="owner"):
+    """role is "owner" or "researcher" (users.role, migration 005)."""
+    body = {"email": email, "password": password, "display_name": display_name, "role": role}
     return _request("POST", "/auth/register", json=body, signed_in=False)
 
 

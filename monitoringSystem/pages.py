@@ -901,12 +901,39 @@ def login_page():
     )
 
 
+# the account types a new user picks from: (role, title, what it's for)
+ROLES = [
+    ("owner", "Compost bin owner", "I have compost bins and want to monitor them."),
+    ("researcher", "Researcher", "I want to use the public composting data."),
+]
+
+
+def _role_card(role, title, description):
+    return dmc.RadioCard(
+        dmc.Group(
+            [dmc.RadioIndicator(), dmc.Stack([dmc.Text(title, fw=600, size="sm"), dmc.Text(description, c="dimmed", size="xs")], gap=0)],
+            wrap="nowrap",
+            align="flex-start",
+        ),
+        value=role,
+        p="sm",
+        radius="md",
+        className="ciq-role-card",
+    )
+
+
 def register_page():
     return _auth_card(
         "Create your account",
         "Free, and ready for your first device in a minute.",
         [
             _form_alert("register-error"),
+            dmc.RadioGroup(
+                dmc.Stack([_role_card(*role) for role in ROLES], gap="xs"),
+                id="register-role",
+                label="I'm signing up as",
+                value="owner",
+            ),
             dmc.TextInput(id="register-email", label="Email", placeholder="you@example.com", name="email", autoComplete="email", leftSection=icon("mail", 16), required=True, value=""),
             dmc.TextInput(id="register-name", label="Display name", description="Optional. Shown in the dashboard instead of your email.", name="name", autoComplete="name", value=""),
             dmc.PasswordInput(id="register-password", label="Password", description="At least 8 characters.", name="new-password", autoComplete="new-password", required=True, value=""),
