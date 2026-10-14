@@ -6,6 +6,7 @@ from dash import dcc
 import api_client
 from api_client import ApiError, ApiUnavailable, NotAuthenticated
 from components import (
+    account_type,
     alert_card,
     bin_card,
     button,
@@ -855,16 +856,57 @@ def new_bin_page():
     )
 
 
+# ---------------------------------------------------------------- research ---
+# A researcher's pages, and the only ones they have. Empty for now:
+# registering for a research API key is being built separately, and fills
+# in "research-keys".
+
+def _coming_soon(icon_name, text, component_id=None):
+    """An empty page's one card, until what goes on it is built."""
+    props = {"id": component_id} if component_id else {}
+    return dmc.Card(
+        dmc.Stack(
+            [
+                dmc.ThemeIcon(icon(icon_name, 26), size=52, radius="xl", variant="light"),
+                dmc.Title("Coming soon", order=4),
+                dmc.Text(text, c="dimmed", size="sm", ta="center"),
+            ],
+            align="center",
+            py="xl",
+        ),
+        padding="lg",
+        **props,
+    )
+
+
+def research_keys_page():
+    return dmc.Box(
+        [
+            page_header("Research", "API keys", "Register for a key to query the anonymised CompostIQ dataset."),
+            _coming_soon("key", "You’ll register for your research API key here.", "research-keys"),
+        ]
+    )
+
+
+def research_docs_page():
+    return dmc.Box(
+        [
+            page_header("Research", "Docs", "How to use the research API, and what its data holds."),
+            _coming_soon("book", "The research API’s docs will be here."),
+        ]
+    )
+
+
 # ------------------------------------------------------------ public pages ---
 
-def not_found_page(signed_in):
-    home = linked_button("Go to dashboard", "/dashboard") if signed_in else linked_button("Back to home", "/")
+def not_found_page(home="/"):
+    """`home` is where the button leads: the signed-in user's home page."""
     return dmc.Stack(
         [
             dmc.Text("404", fz=64, fw=700, c="dimmed", lh=1),
             dmc.Title("Page not found", order=2),
             dmc.Text("That page doesn’t exist, or it has moved.", c="dimmed"),
-            home,
+            linked_button("Back to home", home),
         ],
         align="center",
         gap="sm",
@@ -890,7 +932,7 @@ def _form_alert(component_id):
 def login_page():
     return _auth_card(
         "Welcome back",
-        "Sign in to see your bins and devices.",
+        "Sign in to your CompostIQ account.",
         [
             _form_alert("login-error"),
             dmc.TextInput(id="login-email", label="Email", placeholder="you@example.com", name="email", autoComplete="email", leftSection=icon("mail", 16), value=""),
@@ -946,13 +988,26 @@ def register_page():
 
 # ----------------------------------------------------------------- account ---
 
+# what deleting an account takes with it, by account type: (summary, warning)
+DELETES = {
+    "owner": ("Deletes your bins and all their readings, and unpairs your devices. This cannot be undone.",
+              "This deletes your bins, devices and all their readings. It cannot be undone."),
+    "researcher": ("Deletes your account and signs you out. This cannot be undone.",
+                   "This deletes your account. It cannot be undone."),
+}
+
+
 def account_page(user):
+    kind = account_type(user)
+    type_name = {role: title for role, title, _ in ROLES}[kind]
+    deletes_summary, deletes_warning = DELETES[kind]
     profile = dmc.Card(
         dmc.Stack(
             [
                 _card_title("Profile", "Display name", "Shown in the dashboard. Leave it empty to use your email."),
                 dmc.TextInput(id="account-name", label="Display name", value=user.get("display_name") or "", name="name", autoComplete="name"),
                 dmc.TextInput(label="Email", value=user["email"], disabled=True),
+                dmc.TextInput(label="Account type", value=type_name, description="Chosen when you signed up.", disabled=True),
                 dmc.Group(button("Save", component_id="account-name-save"), justify="flex-end"),
             ]
         ),
@@ -977,7 +1032,7 @@ def account_page(user):
                     [
                         dmc.Text("Danger zone", size="xs", fw=700, tt="uppercase", c="red"),
                         dmc.Title("Delete account", order=4),
-                        dmc.Text("Deletes your bins and all their readings, and unpairs your devices. This cannot be undone.", size="sm", c="dimmed"),
+                        dmc.Text(deletes_summary, size="sm", c="dimmed"),
                     ],
                     gap=2,
                     flex=1,
@@ -993,7 +1048,7 @@ def account_page(user):
     confirm = dmc.Modal(
         dmc.Stack(
             [
-                dmc.Text("This deletes your bins, devices and all their readings. It cannot be undone.", size="sm"),
+                dmc.Text(deletes_warning, size="sm"),
                 dmc.PasswordInput(id="account-delete-password", label="Enter your password to confirm", name="password", autoComplete="current-password", value="", **{"data-autofocus": True}),
                 dmc.Group(
                     [

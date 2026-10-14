@@ -33,7 +33,7 @@ uv run uvicorn main:app --reload --port 8000
 | File | What it holds |
 |---|---|
 | `main.py` | the app, `POST /records` and the device `x-key` authentication |
-| `routers/auth.py` | user accounts and the `current_user` dependency |
+| `routers/auth.py` | user accounts, and the `current_user` and `owner_only` dependencies |
 | `routers/pairing.py` | pairing codes: issue, check, and redeem one for a device key |
 | `routers/devices.py` | the user's devices: register without pairing, list, set up (name + bin), new key, unpair |
 | `routers/bins.py` | the user's bins: list, create |
@@ -46,9 +46,27 @@ uv run uvicorn main:app --reload --port 8000
 |---|---|---|
 | A device | `x-key: <api key>` | `POST /records` only |
 | A device, before it has a key | a pairing code | `POST /pairing/redeem` only |
-| A user | `Authorization: Bearer <JWT>` | `/auth/*`, `/pairing/codes`, `/devices`, `/bins` (their own only) |
+| A user | `Authorization: Bearer <JWT>` | `/auth/*`; and, for owner accounts only, `/pairing/codes`, `/devices`, `/bins`, `/alerts` (their own only) |
 
 They are separate dependencies. A user token cannot write readings, and a device key cannot reach a user endpoint.
+
+### Account types
+
+Every account has a `role`, chosen at sign-up (migration 005). The two are exclusive:
+
+| Role | Can reach |
+|---|---|
+| `owner` | `/auth/*`, and their bins, devices, alerts and pairing codes |
+| `researcher` | `/auth/*` and the research data only (the research endpoints are still to come) |
+
+**Owner-only endpoints.** The `owner_only` dependency (`require_role("owner")` in `routers/auth.py`) guards:
+
+- every endpoint under `/bins`, `/devices` and `/alerts` (set on the whole router)
+- `POST /pairing/codes` and `GET /pairing/codes/{code}`
+
+A researcher's token gets **403** `{"detail": "Not available to researcher accounts."}` from all of them. There is no `WWW-Authenticate` header, so a client doesn't mistake it for an expired token. The 403 comes before any lookup, so it doesn't reveal whether a bin or device exists. The role is read from the database on every request, not from the token, so a token issued before a role change can't keep the old access. Nothing in the API changes the role after sign-up.
+
+`/auth/*` works for both roles. The endpoints a device calls (`POST /records` with its `x-key`, `POST /pairing/redeem` with a code) have no user and are unaffected.
 
 User tokens are JWTs (HS256) carrying `sub` (the user id) and `exp`. They last 8 hours and there are no refresh tokens: the user signs in again. Passwords are stored as argon2id hashes.
 
@@ -56,15 +74,16 @@ User tokens are JWTs (HS256) carrying `sub` (the user id) and `exp`. They last 8
 
 | Method | Path | Auth | Body | Success | Errors |
 |---|---|---|---|---|---|
-| POST | `/auth/register` | none | `{email, password, display_name?}` | 201 token | 409 email already used · 422 invalid |
+| POST | `/auth/register` | none | `{email, password, display_name?, role?}` | 201 token | 409 email already used · 422 invalid |
 | POST | `/auth/login` | none | `{email, password}` | 200 token | 401 |
 | GET | `/auth/me` | Bearer | | 200 user | 401 |
 | PATCH | `/auth/me` | Bearer | `{display_name}` | 200 user | 401 · 422 |
 | POST | `/auth/change-password` | Bearer | `{current_password, new_password}` | 204 | 401 · 422 |
 | DELETE | `/auth/me` | Bearer | `{password}` | 204 | 401 |
 
-A token response is `{access_token, token_type: "bearer", expires_at, user}` and a user is `{id, email, display_name}`.
+A token response is `{access_token, token_type: "bearer", expires_at, user}` and a user is `{id, email, display_name, role}`.
 
+- `role` is `owner` or `researcher` ([Account types](#account-types)). Leaving it out of `/auth/register` makes an owner.
 - Emails are stored in lower case and compared without regard to case.
 - Passwords are 8 to 128 characters. Display names are up to 80; a blank one is stored as empty.
 - `POST /auth/login` gives the same 401 body for an unknown email and a wrong password, and takes as long for both.
@@ -97,6 +116,8 @@ If the hardware ID doesn't match, "That's not my device" calls `DELETE /devices/
 | GET | `/bins` | Bearer | | 200 list of bins | 401 |
 | POST | `/bins` | Bearer | `{name, location?, country_code}` | 201 bin | 401 · 422 |
 
+Every Bearer endpoint in this table is [owner-only](#account-types): a researcher account gets 403.
+
 `status` is `pending`, `expired` or `redeemed`; once redeemed, `device` is the device that used it. A device is `{id, hardware_id, registration, name, model, firmware_version, paired_at, last_seen_at, bin: {id, name} | null, set_up}`, where `set_up` means it has a name and a bin, so its readings are accepted. `registration` is `pairing` or `manual` (below); a manual device's `hardware_id` is `null`.
 
 - **Codes** are 6 digits (leading zeros kept), valid for `PAIRING_CODE_MINUTES`, and used once. Only live codes have to be unique, so a number can come round again later. A user can hold up to 5 live codes; asking for more drops the oldest.
@@ -126,4 +147,4 @@ Everything else is shared with paired devices: `DELETE /devices/{id}` revokes th
 cd backendAPI && uv run pytest
 ```
 
-These are integration tests against the Compose database; if it is not running they are skipped with a hint. The auth tests register their own users (`pytest-…@example.com`) and remove everything they create. The pairing tests (`tests/test_pairing.py`) cover every step above, including expired, reused and guessed codes, another user's device or bin, re-pairing and unpairing, and remove their devices (`02:00:00:00:FD:…`) afterwards. The registration tests (`tests/test_registration.py`) cover registering, the key working at once, another user's bin, unpairing, setting a device up again after its bin is deleted, replacing a key, and the paired-device rules above (409 with nothing revoked, `registration` can't be changed through the API, the database checks reject a mismatched row), and remove the devices they register.
+These are integration tests against the Compose database; if it is not running they are skipped with a hint. The auth tests register their own users (`pytest-…@example.com`) and remove everything they create. The pairing tests (`tests/test_pairing.py`) cover every step above, including expired, reused and guessed codes, another user's device or bin, re-pairing and unpairing, and remove their devices (`02:00:00:00:FD:…`) afterwards. The registration tests (`tests/test_registration.py`) cover registering, the key working at once, another user's bin, unpairing, setting a device up again after its bin is deleted, replacing a key, and the paired-device rules above (409 with nothing revoked, `registration` can't be changed through the API, the database checks reject a mismatched row), and remove the devices they register. The account-type tests (`tests/test_roles.py`) send a researcher's token to every endpoint under the owner-only prefixes, read from the app's OpenAPI schema so new endpoints are covered too, and check that owners still get through and `/auth` still works for a researcher.

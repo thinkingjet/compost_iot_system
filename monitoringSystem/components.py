@@ -319,38 +319,63 @@ def alert_card(kind, title, detail, priority):
 
 # ------------------------------------------------------------------ shell ---
 
-NAV_GROUPS = [
-    (
-        "Workspace",
-        [
-            ("/dashboard", "home", "Overview"),
-            ("/bins", "bin", "Compost bins"),
-            ("/devices", "device", "Devices"),
-        ],
-    ),
-    (
-        "Quick actions",
-        [
-            ("/devices/add", "link", "Pair a device"),
-            ("/devices/register", "key", "Register with API key"),
-            ("/bins/new", "plus", "Create bin"),
-        ],
-    ),
-]
+# the navbar for each account type (users.role); neither sees the other's pages
+NAVIGATION = {
+    "owner": [
+        (
+            "Workspace",
+            [
+                ("/dashboard", "home", "Overview"),
+                ("/bins", "bin", "Compost bins"),
+                ("/devices", "device", "Devices"),
+            ],
+        ),
+        (
+            "Quick actions",
+            [
+                ("/devices/add", "link", "Pair a device"),
+                ("/devices/register", "key", "Register with API key"),
+                ("/bins/new", "plus", "Create bin"),
+            ],
+        ),
+    ],
+    "researcher": [
+        (
+            "Research",
+            [
+                ("/research", "key", "API keys"),
+                ("/research/docs", "book", "Docs"),
+            ],
+        ),
+    ],
+}
 
 
-def navbar():
+def account_type(user):
+    """"owner" (bins and devices) or "researcher" (the research pages). A
+    session from before account types existed holds none; every account was
+    an owner then."""
+    return user.get("role") or "owner"
+
+
+def navbar_links(role):
+    """The navbar's links for an account type; app.py's render_page fills them in."""
     links = []
-    for label, items in NAV_GROUPS:
+    for label, items in NAVIGATION[role]:
         links.append(dmc.Text(label, size="xs", fw=700, tt="uppercase", c="dimmed", mt="md", mb=4, px="sm"))
         # active="exact" lets DMC highlight the current page without a callback
         links.extend(
             dmc.NavLink(label=text, href=href, leftSection=icon(icon_name, 18), active="exact", variant="light")
             for href, icon_name, text in items
         )
+    return links
+
+
+def navbar():
     return dmc.AppShellNavbar(
         [
-            dmc.AppShellSection(links, grow=True),
+            # filled by app.py's render_page, for the signed-in user's account type
+            dmc.AppShellSection(dmc.Box(id="navbar-links"), grow=True),
             # filled by app.py's render_page with the signed-in user
             dmc.AppShellSection([dmc.Divider(mb="sm"), dmc.Box(id="navbar-account")]),
         ],
@@ -385,8 +410,11 @@ def navbar_account(user):
     )
 
 
-def header_actions(public, signed_in):
+def header_actions(public, signed_in, role="owner"):
     """The header's right-hand side, which depends on the shell and the user."""
+    if not public and role != "owner":
+        # the alerts bell is about bins and devices
+        return []
     if not public:
         return [
             dmc.ActionIcon(icon("bell", 18), id="notification-button", variant="default", size="lg", n_clicks=0, **{"aria-label": "Notifications"}),

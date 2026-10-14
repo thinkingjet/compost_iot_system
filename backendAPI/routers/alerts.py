@@ -20,9 +20,10 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from database import db_engine
-from routers.auth import current_user
+from routers.auth import current_user, owner_only
 
-router = APIRouter(prefix="/alerts", tags=["alerts"])
+# owners only: a researcher account has no alerts
+router = APIRouter(prefix="/alerts", tags=["alerts"], dependencies=[Depends(owner_only)])
 
 # PLACEHOLDER THRESHOLDS - roughly reasonable, not yet checked against the
 # literature. They mark readings that are clearly wrong, not just off the

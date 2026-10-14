@@ -25,7 +25,7 @@ from sqlalchemy.exc import IntegrityError
 
 from config import settings
 from database import db_engine
-from routers.auth import current_user
+from routers.auth import owner_only
 from routers.devices import Device, device_out, issue_key, owned_device, release_device
 
 router = APIRouter(prefix="/pairing", tags=["pairing"])
@@ -79,9 +79,11 @@ class RedeemResponse(BaseModel):
 
 
 # ------------------------------------------------------------ dashboard ---
+# owners only: a researcher account has no devices. /redeem below is the
+# device's own call, made with the code rather than a user token.
 
 @router.post("/codes", status_code=201, response_model=PairingCode)
-def create_code(user=Depends(current_user)):
+def create_code(user=Depends(owner_only)):
     expires_at = (datetime.datetime.now(datetime.timezone.utc)
                   + datetime.timedelta(minutes=settings.pairing_code_minutes)).replace(microsecond=0)
     with db_engine.begin() as db:
@@ -120,7 +122,7 @@ def create_code(user=Depends(current_user)):
 
 
 @router.get("/codes/{code}", response_model=PairingStatus)
-def read_code(code: str, user=Depends(current_user)):
+def read_code(code: str, user=Depends(owner_only)):
     """Has the device used this code yet? Polled by the dashboard's pairing page."""
     with db_engine.connect() as db:
         row = db.execute(

@@ -13,9 +13,10 @@ from pydantic import AfterValidator, BaseModel, BeforeValidator, Field
 from sqlalchemy import text
 
 from database import db_engine
-from routers.auth import current_user
+from routers.auth import current_user, owner_only
 
-router = APIRouter(prefix="/bins", tags=["bins"])
+# owners only: a researcher account has no bins
+router = APIRouter(prefix="/bins", tags=["bins"], dependencies=[Depends(owner_only)])
 
 
 def _strip(value):

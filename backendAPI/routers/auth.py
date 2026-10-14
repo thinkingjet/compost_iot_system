@@ -4,6 +4,11 @@ User accounts: register, sign in, and the signed-in user's own account.
 Users authenticate with a Bearer JWT (HS256, 8 hours, no refresh tokens).
 This is separate from the devices' `x-key` authentication in main.py: a user
 token cannot write readings and a device key cannot reach anything here.
+
+Each account has a type, chosen at sign-up (users.role, migration 005), and
+the types are exclusive: an "owner" has bins, devices and alerts, and a
+"researcher" has the research data only. Routers that are for owners alone
+depend on `owner_only`; everything under /auth is for both.
 """
 import datetime
 import uuid
@@ -145,6 +150,22 @@ def current_user(credentials: HTTPAuthorizationCredentials | None = Depends(bear
     if row is None:
         raise _invalid_token()
     return row
+
+
+def require_role(*roles):
+    """A dependency: the signed-in user's row if their account is one of
+    `roles`, else 403. FastAPI runs current_user once per request, so an
+    endpoint can depend on both."""
+    def signed_in_with_role(user=Depends(current_user)):
+        if user.role not in roles:
+            # no WWW-Authenticate header: the token is fine, the account type isn't
+            raise HTTPException(status_code=403, detail=f"Not available to {user.role} accounts.")
+        return user
+    return signed_in_with_role
+
+
+# bins, devices, alerts and pairing codes: a researcher account has none
+owner_only = require_role("owner")
 
 
 # --------------------------------------------------------------- endpoints ---
