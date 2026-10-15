@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from database import db_engine
-from routers import alerts, auth, bins, devices, pairing
+from routers import alerts, auth, bins, devices, pairing, research_keys
 from routers.alerts import record_alerts
 
 
@@ -25,6 +25,7 @@ app.include_router(pairing.router)
 app.include_router(devices.router)
 app.include_router(bins.router)
 app.include_router(alerts.router)
+app.include_router(research_keys.router)
 
 api_key_header = APIKeyHeader(name = "x-key")
 
