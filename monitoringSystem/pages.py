@@ -857,13 +857,10 @@ def new_bin_page():
 
 
 # ---------------------------------------------------------------- research ---
-# A researcher's pages, and the only ones they have. Empty for now:
-# registering for a research API key is being built separately, and fills
-# in "research-keys".
+# A researcher's pages, and the only ones they have.
 
-def _coming_soon(icon_name, text, component_id=None):
+def _coming_soon(icon_name, text):
     """An empty page's one card, until what goes on it is built."""
-    props = {"id": component_id} if component_id else {}
     return dmc.Card(
         dmc.Stack(
             [
@@ -875,17 +872,68 @@ def _coming_soon(icon_name, text, component_id=None):
             py="xl",
         ),
         padding="lg",
-        **props,
+    )
+
+
+def research_keys_card(keys, new_key=None):
+    """The researcher's keys (GET /auth/research-keys), the form for a new
+    one, and a new key, shown this once."""
+    shown = []
+    if new_key:
+        shown = [dmc.Alert(
+            [
+                dmc.Text("Copy it now: this is the only time it’s shown.", size="sm", mb="xs"),
+                dmc.Group(
+                    [
+                        dmc.Code(new_key, id="research-new-key", fz="sm", flex=1, style={"wordBreak": "break-all"}),
+                        dmc.CopyButton(target_id="research-new-key", children="Copy", copiedChildren="Copied", size="xs", variant="default"),
+                    ],
+                    wrap="nowrap",
+                ),
+            ],
+            title="Your new key",
+            color="yellow",
+            variant="light",
+        )]
+    rows = [
+        dmc.Group(
+            [
+                dmc.Stack([dmc.Text(key["name"], fw=600, size="sm"), dmc.Text(f"Created {time_ago(key['created_at'])}", c="dimmed", size="xs")], gap=0),
+                dcc.ConfirmDialogProvider(
+                    button("Delete", "light", color="red", size="xs"),
+                    id={"type": "research-key-delete", "id": key["id"]},
+                    message=f"Delete the key “{key['name']}”? Anything using it stops working at once.",
+                ),
+            ],
+            justify="space-between",
+        )
+        for key in keys
+    ]
+    form = dmc.Group(
+        [
+            dmc.TextInput(id="research-key-name", placeholder="Key name, e.g. Lab server", value="", flex=1),
+            button("Create key", icon_name="key", component_id="research-key-create"),
+        ],
+    )
+    return dmc.Stack(
+        [
+            *shown,
+            form,
+            *(rows or [dmc.Text("No keys yet.", c="dimmed", size="sm")]),
+            dmc.Text(["You can have up to 5 keys. Send one in the ", dmc.Code("x-research-key"), " header."], c="dimmed", size="xs"),
+        ],
     )
 
 
 def research_keys_page():
-    return dmc.Box(
-        [
-            page_header("Research", "API keys", "Register for a key to query the anonymised CompostIQ dataset."),
-            _coming_soon("key", "You’ll register for your research API key here.", "research-keys"),
-        ]
-    )
+    header = page_header("Research", "API keys", "Keys for querying the anonymised CompostIQ dataset.")
+    try:
+        keys = api_client.list_research_keys()
+    except NotAuthenticated:
+        return dmc.Box([header, dmc.Alert("Your session has ended. Please sign in again.", color="yellow")])
+    except (ApiError, ApiUnavailable):
+        return dmc.Box([header, dmc.Alert("Can’t load your keys right now. Try again in a moment.", color="red")])
+    return dmc.Box([header, dmc.Card(research_keys_card(keys), id="research-keys", padding="lg")])
 
 
 def research_docs_page():
