@@ -76,7 +76,10 @@ checks (migration, item, ok) AS (
             EXISTS (SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'users' AND column_name = 'role' AND is_nullable = 'NO')),
         ('005', 'role is owner or researcher',
-            EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_role_check'))
+            EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_role_check')),
+
+        ('006', 'table research_apikeys exists',
+            to_regclass('public.research_apikeys') IS NOT NULL)
 )
 SELECT migration, item, CASE WHEN ok THEN 'applied' ELSE 'MISSING' END AS status
 FROM checks
