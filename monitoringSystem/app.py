@@ -63,6 +63,7 @@ from pages import (
     register_device_page,
     register_page,
     research_docs_page,
+    research_keys_card,
     research_keys_page,
 )
 from settings import DASHBOARD_SECRET_KEY, SESSION_HOURS, WEBSITE_URL
@@ -1473,6 +1474,41 @@ def show_open_alerts(n_clicks):
         lines.append(f"{len(alerts) - 3} more on the overview page")
     title = "1 open alert" if len(alerts) == 1 else f"{len(alerts)} open alerts"
     return toast(" · ".join(lines), "red", title)
+
+
+# ----------------------------------------------------------- research keys ---
+
+@callback(
+    Output("research-keys", "children"),
+    Output("notify", "sendNotifications", allow_duplicate=True),
+    Input("research-key-create", "n_clicks"),
+    Input("research-key-name", "n_submit"),
+    Input({"type": "research-key-delete", "id": ALL}, "submit_n_clicks"),
+    State("research-key-name", "value"),
+    prevent_initial_call=True,
+)
+def manage_research_keys(_create, _enter, _deletes, name):
+    """Create a key (button or Enter) or delete one, then redraw the list."""
+    # the card is redrawn with fresh buttons, which must not count as clicks
+    if not ctx.triggered[0]["value"]:
+        return no_update, no_update
+    new_key = None
+    try:
+        if ctx.triggered_id in ("research-key-create", "research-key-name"):
+            if not (name or "").strip():
+                return no_update, toast("Give the key a name.", "red")
+            new_key = api_client.create_research_key(name.strip())["api_key"]
+        else:
+            api_client.delete_research_key(ctx.triggered_id["id"])
+        keys = api_client.list_research_keys()
+    except NotAuthenticated:
+        return no_update, toast(SESSION_EXPIRED, "yellow")
+    except ApiError as error:
+        # 409: already at the limit
+        return no_update, toast(error.detail if error.status == 409 else _api_problem(error), "red")
+    except ApiUnavailable as error:
+        return no_update, toast(_api_problem(error), "red")
+    return research_keys_card(keys, new_key), no_update
 
 
 if __name__ == "__main__":

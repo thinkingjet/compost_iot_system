@@ -182,6 +182,21 @@ def get_device_records(device_id, hours=24):
     return _request("GET", f"/devices/{device_id}/records?hours={hours}")
 
 
+# ---------------------------------------------------------- research keys ---
+
+def list_research_keys():
+    return _request("GET", "/auth/research-keys")
+
+
+def create_research_key(name):
+    """{id, name, created_at, api_key}: the key comes back this once."""
+    return _request("POST", "/auth/research-keys", json={"name": name})
+
+
+def delete_research_key(key_id):
+    return _request("DELETE", f"/auth/research-keys/{key_id}")
+
+
 # ------------------------------------------------------------------ alerts ---
 
 def list_alerts(bin_id=None, include_resolved=False):
