@@ -63,6 +63,8 @@ from pages import (
     register_device_page,
     register_page,
     research_docs_page,
+    research_data_page,
+    research_data_result,
     research_keys_card,
     research_keys_page,
 )
@@ -163,6 +165,7 @@ OWNER_ROUTES = {
 }
 RESEARCHER_ROUTES = {
     "/research": research_keys_page,
+    "/research/data": research_data_page,
     "/research/docs": research_docs_page,
     "/account": account_page,
 }
@@ -1477,6 +1480,22 @@ def show_open_alerts(n_clicks):
 
 
 # ----------------------------------------------------------- research keys ---
+
+@callback(
+    Output("research-data-result", "children"),
+    Input("research-data-apply", "n_clicks"),
+    State("research-country", "value"),
+    State("research-start", "value"),
+    State("research-end", "value"),
+    prevent_initial_call=True,
+)
+def filter_research_data(_clicks, country, start, end):
+    try:
+        result = api_client.research_data("daily", country_code=(country or "").strip() or None,
+                                          start=(start or "").strip() or None, end=(end or "").strip() or None)
+    except (ApiError, ApiUnavailable, NotAuthenticated) as error:
+        return dmc.Alert(str(error.detail) if isinstance(error, ApiError) else "Could not load research data.", color="red")
+    return research_data_result(result)
 
 @callback(
     Output("research-keys", "children"),

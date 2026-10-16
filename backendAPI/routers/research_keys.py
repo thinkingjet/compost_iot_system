@@ -96,7 +96,11 @@ def research_key(api_key: str = Security(research_key_header)):
     key_hash = hashlib.sha256(api_key.encode()).hexdigest()
     with db_engine.connect() as db:
         user_id = db.execute(
-            text("SELECT user_id FROM research_apikeys WHERE api_key_hash = :hash"), {"hash": key_hash}
+            text("""
+                SELECT k.user_id FROM research_apikeys k
+                JOIN users u ON u.id = k.user_id
+                WHERE k.api_key_hash = :hash AND u.role = 'researcher'
+            """), {"hash": key_hash}
         ).scalar()
     if user_id is None:
         raise HTTPException(status_code=401, detail="Invalid research API key.")

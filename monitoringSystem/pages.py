@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import dash_mantine_components as dmc
-from dash import dcc
+from dash import dcc, html
 
 import api_client
 from api_client import ApiError, ApiUnavailable, NotAuthenticated
@@ -926,21 +926,85 @@ def research_keys_card(keys, new_key=None):
 
 
 def research_keys_page():
-    header = page_header("Research", "API keys", "Keys for querying the anonymised CompostIQ dataset.")
+    header = page_header("Research", "Research access", "Create a key to query anonymised CompostIQ data.")
     try:
         keys = api_client.list_research_keys()
     except NotAuthenticated:
         return dmc.Box([header, dmc.Alert("Your session has ended. Please sign in again.", color="yellow")])
     except (ApiError, ApiUnavailable):
         return dmc.Box([header, dmc.Alert("Can’t load your keys right now. Try again in a moment.", color="red")])
-    return dmc.Box([header, dmc.Card(research_keys_card(keys), id="research-keys", padding="lg")])
+    return dmc.Stack([
+        header,
+        dmc.Text("Your account can read country-level aggregates. Create a key below, copy it once, then use it with the research API.", size="sm"),
+        dmc.Card(research_keys_card(keys), id="research-keys", padding="lg"),
+        dmc.Group([
+            linked_button("Explore data", "/research/data", "default", icon_name="chart"),
+            linked_button("API documentation", "/research/docs", "default", icon_name="book"),
+        ]),
+    ], gap="md")
+
+
+RESEARCH_COLUMNS = [
+    ("day", "UTC day"), ("country_code", "Country"), ("bin_count", "Bins"),
+    ("reading_count", "Readings"), ("temperature_c", "Temp °C"),
+    ("moisture_percent", "Moisture %"), ("o2_percent", "O₂ %"),
+    ("co2_percent", "CO₂ %"), ("nh3_ratio", "NH₃ ratio"),
+]
+
+
+def research_data_result(result):
+    rows = result["data"]
+    if not rows:
+        return dmc.Alert(
+            "No aggregate data meets the privacy threshold for these filters. Each displayed country and day needs readings from at least 3 different owners.",
+            color="blue", variant="light",
+        )
+    return dmc.Stack([
+        dmc.Text(f"{len(rows)} country-day groups · each includes at least 3 owners", size="sm", c="dimmed"),
+        dmc.ScrollArea(html.Table([
+            html.Thead(html.Tr([html.Th(label) for _, label in RESEARCH_COLUMNS])),
+            html.Tbody([html.Tr([html.Td(str(row.get(key, ""))[:10] if key == "day" else row.get(key, ""))
+                                 for key, _ in RESEARCH_COLUMNS]) for row in rows]),
+        ], style={"width": "100%", "borderCollapse": "collapse"})),
+    ], gap="sm")
+
+
+def research_data_page():
+    today = datetime.now().astimezone().date()
+    start = (today - timedelta(days=30)).isoformat() + "T00:00:00Z"
+    end = today.isoformat() + "T23:59:59Z"
+    try:
+        initial = research_data_result(api_client.research_data("daily", start=start, end=end))
+    except (ApiError, ApiUnavailable, NotAuthenticated):
+        initial = dmc.Alert("Could not load research data right now.", color="red")
+    return dmc.Stack([
+        page_header("Research", "Explore data", "Country-level compost readings across participating owners."),
+        dmc.Card(dmc.Stack([
+            dmc.Group([
+                dmc.TextInput(id="research-country", label="Country code", placeholder="All countries or ID", inputProps={"maxLength": 2}),
+                dmc.TextInput(id="research-start", label="From (ISO 8601)", value=start),
+                dmc.TextInput(id="research-end", label="To (ISO 8601)", value=end),
+                button("Apply filters", component_id="research-data-apply"),
+            ], align="end"),
+            dmc.Text("Data is grouped by UTC day. Names, locations, IDs and individual readings are excluded.", size="xs", c="dimmed"),
+            dmc.Box(initial, id="research-data-result"),
+        ], gap="md"), padding="lg"),
+        linked_button("Use the research API", "/research/docs", "default", icon_name="book"),
+    ], gap="lg")
 
 
 def research_docs_page():
     return dmc.Box(
         [
             page_header("Research", "Docs", "How to use the research API, and what its data holds."),
-            _coming_soon("book", "The research API’s docs will be here."),
+            dmc.Card(dmc.Stack([
+                dmc.Text("Create an API key on the API keys page. Send it as x-research-key in each request.", size="sm"),
+                dmc.Code("GET /research/overview?country_code=ID&start=2026-10-01T00:00:00Z&end=2026-10-16T00:00:00Z", block=True),
+                dmc.Code("GET /research/daily?country_code=ID&start=2026-10-01T00:00:00Z&end=2026-10-16T00:00:00Z", block=True),
+                dmc.Text("Country code is optional. Times are ISO 8601 with a timezone; the range can be up to 366 days. Defaults to the last 30 days.", size="sm"),
+                dmc.Text("Results include country, number of bins and readings, and averages for temperature, moisture, O₂, CO₂ and relative NH₃. Daily groups use UTC. Groups with fewer than 3 distinct owners are omitted. No personal, bin, device or individual reading data is returned.", size="sm"),
+                linked_button("Explore data", "/research/data", "default", icon_name="chart"),
+            ], gap="md"), padding="lg"),
         ]
     )
 
