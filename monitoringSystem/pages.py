@@ -956,11 +956,11 @@ def research_data_result(result):
     rows = result["data"]
     if not rows:
         return dmc.Alert(
-            "No aggregate data meets the privacy threshold for these filters. Each displayed country and day needs readings from at least 3 different owners.",
+            "No readings found for these filters.",
             color="blue", variant="light",
         )
     return dmc.Stack([
-        dmc.Text(f"{len(rows)} country-day groups · each includes at least 3 owners", size="sm", c="dimmed"),
+        dmc.Text(f"{len(rows)} country-day groups", size="sm", c="dimmed"),
         dmc.ScrollArea(html.Table([
             html.Thead(html.Tr([html.Th(label) for _, label in RESEARCH_COLUMNS])),
             html.Tbody([html.Tr([html.Td(str(row.get(key, ""))[:10] if key == "day" else row.get(key, ""))
@@ -1002,7 +1002,7 @@ def research_docs_page():
                 dmc.Code("GET /research/overview?country_code=ID&start=2026-10-01T00:00:00Z&end=2026-10-16T00:00:00Z", block=True),
                 dmc.Code("GET /research/daily?country_code=ID&start=2026-10-01T00:00:00Z&end=2026-10-16T00:00:00Z", block=True),
                 dmc.Text("Country code is optional. Times are ISO 8601 with a timezone; the range can be up to 366 days. Defaults to the last 30 days.", size="sm"),
-                dmc.Text("Results include country, number of bins and readings, and averages for temperature, moisture, O₂, CO₂ and relative NH₃. Daily groups use UTC. Groups with fewer than 3 distinct owners are omitted. No personal, bin, device or individual reading data is returned.", size="sm"),
+                dmc.Text("Results include country, number of bins and readings, and averages for temperature, moisture, O₂, CO₂ and relative NH₃. Daily groups use UTC. No personal, bin, device or individual reading data is returned.", size="sm"),
                 linked_button("Explore data", "/research/data", "default", icon_name="chart"),
             ], gap="md"), padding="lg"),
         ]

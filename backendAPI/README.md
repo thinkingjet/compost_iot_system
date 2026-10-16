@@ -145,7 +145,7 @@ Everything else is shared with paired devices: `DELETE /devices/{id}` revokes th
 
 A researcher selects the **researcher** account type at registration, then creates a key on the dashboard's **API keys** page. Send that key as `x-research-key` to `GET /research/overview` or `GET /research/daily`. Owner tokens and device keys cannot call these endpoints. The signed-in dashboard's **Explore data** page uses the equivalent `/research/preview/overview` and `/research/preview/daily` routes with the researcher's Bearer token.
 
-Both data routes accept optional `country_code` (two-letter ISO code), `start` and `end` (ISO 8601 timestamps with timezone). The default window is the last 30 days; the maximum is 366 days. The end is exclusive. Results group readings by country, or by country and UTC day. They include the contributing bin and reading counts and the mean of each sensor value. Names, locations, account IDs, device IDs, bin IDs and individual readings are never returned. A group appears only when at least **three distinct owners** contributed readings; smaller groups are omitted.
+Both data routes accept optional `country_code` (two-letter ISO code), `start` and `end` (ISO 8601 timestamps with timezone). The default window is the last 30 days; the maximum is 366 days. The end is exclusive. Results group readings by country, or by country and UTC day. They include the contributing bin and reading counts and the mean of each sensor value. Names, locations, account IDs, device IDs, bin IDs and individual readings are never returned. Groups appear whenever they contain readings, regardless of the number of owners.
 
 ```bash
 curl -H "x-research-key: $RESEARCH_API_KEY" \

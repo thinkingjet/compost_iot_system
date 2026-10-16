@@ -5,7 +5,7 @@ from main import db_engine
 from tests.conftest import _register
 
 
-def test_country_daily_aggregates_require_three_owners(client, researcher, new_email):
+def test_country_daily_aggregates_include_one_owner(client, researcher, new_email):
     key = client.post("/auth/research-keys", json={"name": "analysis"},
                       headers=researcher["headers"]).json()["api_key"]
     headers = {"x-research-key": key}
@@ -26,7 +26,8 @@ def test_country_daily_aggregates_require_three_owners(client, researcher, new_e
                         '2000-01-01T12:00:00Z', :temperature, 50, 10, 5, 0.5)
             """), {"bin_id": bin_id, "temperature": 40 + number * 10})
         result = client.get("/research/daily" + query, headers=headers).json()["data"]
-        assert len(result) == (1 if number == 2 else 0)
+        assert len(result) == 1
+        assert result[0]["reading_count"] == number + 1
 
     row = result[0]
     assert row["country_code"] == "ZZ"

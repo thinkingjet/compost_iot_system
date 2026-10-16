@@ -1,7 +1,6 @@
-"""Anonymised, read-only aggregates for researcher accounts.
+"""Read-only country aggregates for researcher accounts.
 
-No owner, bin, device, location, or individual reading is returned. A group
-    is visible only when at least three different owners contributed readings.
+No owner, bin, device, location, or individual reading is returned.
 """
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
@@ -15,7 +14,6 @@ from routers.auth import require_role
 from routers.research_keys import research_key
 
 router = APIRouter(prefix="/research", tags=["research data"])
-MIN_OWNERS = 3
 
 
 class Window(BaseModel):
@@ -39,8 +37,6 @@ def window(
 
 
 def _aggregate(w: Window, daily: bool):
-    # The HAVING clause applies to every group, including each day. This
-    # prevents a filtered response from exposing one owner's measurements.
     period = "date_trunc('day', r.timestamp AT TIME ZONE 'UTC')" if daily else "NULL"
     sql = text(f"""
         SELECT b.country_code, {period} AS day,
@@ -56,19 +52,18 @@ def _aggregate(w: Window, daily: bool):
           AND b.country_code IS NOT NULL
           AND (:country_code IS NULL OR b.country_code = :country_code)
         GROUP BY b.country_code, day
-        HAVING count(DISTINCT b.user_id) >= :min_bins
         ORDER BY b.country_code, day
     """)
     with db_engine.connect() as db:
         rows = db.execute(sql, {"start": w.start, "end": w.end,
-                                "country_code": w.country_code, "min_bins": MIN_OWNERS}).mappings().all()
+                                "country_code": w.country_code}).mappings().all()
     return [{key: float(value) if key in {"temperature_c", "moisture_percent", "o2_percent", "co2_percent", "nh3_ratio"} and value is not None else value
              for key, value in row.items() if daily or key != "day"} for row in rows]
 
 
 def _result(w: Window, daily: bool):
     return {"start": w.start, "end": w.end, "country_code": w.country_code,
-            "minimum_owners_per_group": MIN_OWNERS, "data": _aggregate(w, daily)}
+            "data": _aggregate(w, daily)}
 
 
 @router.get("/overview", dependencies=[Depends(research_key)])
