@@ -954,17 +954,19 @@ RESEARCH_COLUMNS = [
 
 def research_data_result(result):
     rows = result["data"]
+    # overview rows have no day
+    columns = [column for column in RESEARCH_COLUMNS if column[0] != "day" or (rows and "day" in rows[0])]
     if not rows:
         return dmc.Alert(
             "No readings found for these filters.",
             color="blue", variant="light",
         )
     return dmc.Stack([
-        dmc.Text(f"{len(rows)} country-day groups", size="sm", c="dimmed"),
+        dmc.Text(f"{len(rows)} rows", size="sm", c="dimmed"),
         dmc.ScrollArea(html.Table([
-            html.Thead(html.Tr([html.Th(label) for _, label in RESEARCH_COLUMNS])),
+            html.Thead(html.Tr([html.Th(label) for _, label in columns])),
             html.Tbody([html.Tr([html.Td(str(row.get(key, ""))[:10] if key == "day" else row.get(key, ""))
-                                 for key, _ in RESEARCH_COLUMNS]) for row in rows]),
+                                 for key, _ in columns]) for row in rows]),
         ], style={"width": "100%", "borderCollapse": "collapse"})),
     ], gap="sm")
 
@@ -981,6 +983,8 @@ def research_data_page():
         page_header("Research", "Explore data", "Country-level compost readings across participating owners."),
         dmc.Card(dmc.Stack([
             dmc.Group([
+                dmc.SegmentedControl(id="research-kind", value="daily", data=[
+                    {"label": "Daily", "value": "daily"}, {"label": "Overall", "value": "overview"}]),
                 dmc.TextInput(id="research-country", label="Country code", placeholder="All countries or ID", inputProps={"maxLength": 2}),
                 dmc.TextInput(id="research-start", label="From (ISO 8601)", value=start),
                 dmc.TextInput(id="research-end", label="To (ISO 8601)", value=end),
