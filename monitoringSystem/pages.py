@@ -58,6 +58,42 @@ ALERT_TEXT = {
     "offline": ("Sensor offline", "Check its power and Wi-Fi"),
 }
 
+# What to do about each alert, for the Maintenance tab. From the BC Ministry of
+# Agriculture troubleshooting factsheet (2025), Cornell Composting and UC ANR;
+# the offline steps and checking the lid are ours. To be checked with Prof. Komang.
+MAINTENANCE_STEPS = {
+    "too_hot": [
+        "Turn the pile to let the heat out.",
+        "If it stays hot, make the pile smaller.",
+        "Check it hasn’t dried out, and add water while turning if it has.",
+    ],
+    "too_dry": [
+        "Add water while turning the pile, so it spreads evenly.",
+        "Stop when a squeezed handful feels damp and holds its shape but doesn’t drip.",
+        "Cover the bin to keep the moisture in.",
+    ],
+    "too_wet": [
+        "Turn the pile to let excess water evaporate.",
+        "If it’s still soggy, mix in dry material (sawdust, wood chips, dry leaves, shredded cardboard) and turn again.",
+        "Cover the bin to keep rain out.",
+    ],
+    "low_oxygen": [
+        "Turn the pile to let air in.",
+        "Mix in coarse, dry material (wood chips, twigs) to open up air channels.",
+        "If it smells like rotten eggs, it’s probably too wet or packed down: follow the steps for a wet pile.",
+    ],
+    "high_co2": [
+        "Turn the pile: the microbes are using up the air faster than it gets in.",
+        "Mix in coarse material so air can move through.",
+        "Check the lid and vents aren’t blocked.",
+    ],
+    "offline": [
+        "Check the device has power.",
+        "Check it’s in range of the Wi-Fi.",
+        "Restart it.",
+    ],
+}
+
 
 def alerts_grid(alerts):
     if not alerts:
@@ -261,18 +297,23 @@ def live_panel(kind, readings, device_names):
     return dmc.Box([readings_strip(readings), dmc.Card([toolbar, chart, gas_chart], padding="md")])
 
 
-def maintenance_panel():
-    # needs the prediction model (D6); until then, say so instead of made-up tasks
-    return dmc.Card(
-        [
-            _card_title("Smart schedule", "Estimated next tasks"),
-            dmc.Text(
-                "MAYBE coming with the prediction model: it will suggest when to turn or water the pile, and when the compost will be ready.",
-                c="dimmed", size="sm", mt="md",
-            ),
-        ],
-        padding="md",
-    )
+def maintenance_panel(alerts):
+    """Steps to fix each of the bin's open alerts (GET /alerts?bin_id=...), one card each."""
+    if not alerts:
+        return dmc.Card(dmc.Text("Nothing to do right now. Steps will show here if this bin needs attention.", c="dimmed", size="sm"), padding="md")
+    cards = []
+    for alert in alerts:
+        title = ALERT_TEXT.get(alert["type"], (alert["type"],))[0]
+        if alert["type"] == "offline":
+            title += f" · {alert['device_name'] or 'Sensor'}"
+        cards.append(dmc.Card(
+            [
+                _card_title(f"Started {time_ago(alert['triggered_at'])}", title),
+                dmc.List([dmc.ListItem(step) for step in MAINTENANCE_STEPS.get(alert["type"], [])], type="ordered", size="sm", mt="sm"),
+            ],
+            padding="md",
+        ))
+    return dmc.SimpleGrid(cards, cols={"base": 1, "md": 2})
 
 
 # the daily averages GET /bins/{id}/history returns besides temperature
@@ -489,7 +530,7 @@ def detail_page(kind, item_id, tab):
     elif tab == "settings":
         panel = settings_panel(kind)
     elif tab == "maintenance":
-        panel = maintenance_panel()
+        panel = maintenance_panel([])
     else:
         panel = devices_panel()
 
@@ -510,7 +551,7 @@ def bin_detail_page(bin_id, tab):
         all_devices = api_client.list_devices() if tab in ("devices", "live") else []
         readings = api_client.get_bin_records(bin_id) if tab == "live" else []
         history = api_client.get_bin_history(bin_id) if tab == "history" else []
-        alerts = api_client.list_alerts(bin_id=bin_id) if tab == "live" else []
+        alerts = api_client.list_alerts(bin_id=bin_id) if tab in ("live", "maintenance") else []
     except NotAuthenticated:
         return dmc.Alert("Your session has ended. Please sign in again.", color="yellow")
     except ApiError:
@@ -524,7 +565,7 @@ def bin_detail_page(bin_id, tab):
     elif tab == "settings":
         panel = bin_settings_panel(bin_data)
     elif tab == "maintenance":
-        panel = maintenance_panel()
+        panel = maintenance_panel(alerts)
     elif tab == "devices":
         # the API lists all the user's devices; keep the ones in this bin
         panel = bin_devices_panel(bin_data, [d for d in all_devices if d["bin"] and d["bin"]["id"] == bin_id])
