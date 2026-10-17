@@ -57,7 +57,7 @@ Every account has a `role`, chosen at sign-up (migration 005). The two are exclu
 | Role | Can reach |
 |---|---|
 | `owner` | `/auth/*`, and their bins, devices, alerts and pairing codes |
-| `researcher` | `/auth/*` and the research data only (the research endpoints are still to come) |
+| `researcher` | `/auth/*` and anonymised, read-only country aggregates under `/research/*` |
 
 **Owner-only endpoints.** The `owner_only` dependency (`require_role("owner")` in `routers/auth.py`) guards:
 
@@ -140,6 +140,17 @@ A lost or leaked key is replaced with `POST /devices/{id}/key`: the old key stop
 - **The dashboard.** It only shows the button for registered devices, refuses to open the dialog for a paired one, and shows the API's 409 as a plain message.
 
 Everything else is shared with paired devices: `DELETE /devices/{id}` revokes the key, and if the device's bin is deleted it goes back to "not set up" (409 on `/records`) until `POST /devices/{id}/setup` gives it another bin. It keeps its key throughout.
+
+## Research data API
+
+A researcher selects the **researcher** account type at registration, then creates a key on the dashboard's **API keys** page. Send that key as `x-research-key` to `GET /research/overview` or `GET /research/daily`. Owner tokens and device keys cannot call these endpoints. The signed-in dashboard's **Explore data** page uses the equivalent `/research/preview/overview` and `/research/preview/daily` routes with the researcher's Bearer token.
+
+Both data routes accept optional `country_code` (two-letter ISO code), `start` and `end` (ISO 8601 timestamps with timezone). The default window is the last 30 days; the maximum is 366 days. The end is exclusive. Results group readings by country, or by country and UTC day. They include the contributing bin and reading counts and the mean of each sensor value. Names, locations, account IDs, device IDs, bin IDs and individual readings are never returned. Groups appear whenever they contain readings, regardless of the number of owners.
+
+```bash
+curl -H "x-research-key: $RESEARCH_API_KEY" \
+  'http://127.0.0.1:8000/research/daily?country_code=ID&start=2026-10-01T00:00:00Z&end=2026-10-16T00:00:00Z'
+```
 
 ## Tests
 
