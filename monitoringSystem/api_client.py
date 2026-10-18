@@ -205,6 +205,10 @@ def research_data(kind="overview", country_code=None, start=None, end=None):
     return _request("GET", f"/research/preview/{kind}{suffix}")
 
 
+def research_countries():
+    return _request("GET", "/research/preview/countries")
+
+
 # ------------------------------------------------------------------ alerts ---
 
 def list_alerts(bin_id=None, include_resolved=False):

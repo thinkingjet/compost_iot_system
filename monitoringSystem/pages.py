@@ -985,29 +985,34 @@ def research_keys_page():
     ], gap="md")
 
 
-RESEARCH_COLUMNS = [
-    ("day", "UTC day"), ("country_code", "Country"), ("bin_count", "Bins"),
-    ("reading_count", "Readings"), ("temperature_c", "Temp °C"),
-    ("moisture_percent", "Moisture %"), ("o2_percent", "O₂ %"),
-    ("co2_percent", "CO₂ %"), ("nh3_ratio", "NH₃ ratio"),
-]
+RESEARCH_LABELS = {
+    "day": "UTC day", "country_code": "Country", "bin_count": "Bins", "reading_count": "Readings",
+    "temperature_c": "Temp °C", "moisture_percent": "Moisture %", "o2_percent": "O₂ %",
+    "co2_percent": "CO₂ %", "nh3_ratio": "NH₃ ratio",
+    "type": "Alert", "alert_count": "Times", "avg_hours_to_resolve": "Avg hours to fix",
+}
+
+
+def _research_cell(row, key):
+    if key == "day":
+        return str(row[key])[:10]
+    if key + "_min" in row:
+        # a sensor: average (min–max)
+        return f"{row[key]} ({row[key + '_min']}–{row[key + '_max']})"
+    return row[key]
 
 
 def research_data_result(result):
     rows = result["data"]
-    # overview rows have no day
-    columns = [column for column in RESEARCH_COLUMNS if column[0] != "day" or (rows and "day" in rows[0])]
     if not rows:
-        return dmc.Alert(
-            "No readings found for these filters.",
-            color="blue", variant="light",
-        )
+        return dmc.Alert("Nothing found for these filters.", color="blue", variant="light")
+    # the columns of whichever view this is; spread is shown inside the sensor cells
+    keys = [key for key in rows[0] if not key.endswith(("_min", "_max", "_sd"))]
     return dmc.Stack([
-        dmc.Text(f"{len(rows)} rows", size="sm", c="dimmed"),
+        dmc.Text(f"{len(rows)} rows. Sensors show average (min–max); the CSV also has the standard deviation.", size="sm", c="dimmed"),
         dmc.ScrollArea(html.Table([
-            html.Thead(html.Tr([html.Th(label) for _, label in columns])),
-            html.Tbody([html.Tr([html.Td(str(row.get(key, ""))[:10] if key == "day" else row.get(key, ""))
-                                 for key, _ in columns]) for row in rows]),
+            html.Thead(html.Tr([html.Th(RESEARCH_LABELS.get(key, key)) for key in keys])),
+            html.Tbody([html.Tr([html.Td(_research_cell(row, key)) for key in keys]) for row in rows]),
         ], style={"width": "100%", "borderCollapse": "collapse"})),
     ], gap="sm")
 
@@ -1017,19 +1022,24 @@ def research_data_page():
     start = (today - timedelta(days=30)).isoformat() + "T00:00:00Z"
     end = today.isoformat() + "T23:59:59Z"
     try:
+        countries = api_client.research_countries()
         initial = research_data_result(api_client.research_data("daily", start=start, end=end))
     except (ApiError, ApiUnavailable, NotAuthenticated):
-        initial = dmc.Alert("Could not load research data right now.", color="red")
+        countries, initial = [], dmc.Alert("Could not load research data right now.", color="red")
     return dmc.Stack([
         page_header("Research", "Explore data", "Country-level compost readings across participating owners."),
         dmc.Card(dmc.Stack([
             dmc.Group([
                 dmc.SegmentedControl(id="research-kind", value="daily", data=[
-                    {"label": "Daily", "value": "daily"}, {"label": "Overall", "value": "overview"}]),
-                dmc.TextInput(id="research-country", label="Country code", placeholder="All countries or ID", inputProps={"maxLength": 2}),
+                    {"label": "Daily", "value": "daily"}, {"label": "Overall", "value": "overview"},
+                    {"label": "Alerts", "value": "alerts"}]),
+                dmc.Select(id="research-country", label="Country", placeholder="All countries", clearable=True, data=[
+                    {"value": c["country_code"], "label": f"{c['country_code']} · {c['bin_count']} bins"} for c in countries]),
                 dmc.TextInput(id="research-start", label="From (ISO 8601)", value=start),
                 dmc.TextInput(id="research-end", label="To (ISO 8601)", value=end),
                 button("Apply filters", component_id="research-data-apply"),
+                button("Download CSV", "default", icon_name="download", component_id="research-download-button"),
+                dcc.Download(id="research-download"),
             ], align="end"),
             dmc.Text("Data is grouped by UTC day. Names, locations, IDs and individual readings are excluded.", size="xs", c="dimmed"),
             dmc.Box(initial, id="research-data-result"),
@@ -1046,8 +1056,11 @@ def research_docs_page():
                 dmc.Text("Create an API key on the API keys page. Send it as x-research-key in each request.", size="sm"),
                 dmc.Code("GET /research/overview?country_code=ID&start=2026-10-01T00:00:00Z&end=2026-10-16T00:00:00Z", block=True),
                 dmc.Code("GET /research/daily?country_code=ID&start=2026-10-01T00:00:00Z&end=2026-10-16T00:00:00Z", block=True),
-                dmc.Text("Country code is optional. Times are ISO 8601 with a timezone; the range can be up to 366 days. Defaults to the last 30 days.", size="sm"),
-                dmc.Text("Results include country, number of bins and readings, and averages for temperature, moisture, O₂, CO₂ and relative NH₃. Daily groups use UTC. No personal, bin, device or individual reading data is returned.", size="sm"),
+                dmc.Code("GET /research/alerts?country_code=ID", block=True),
+                dmc.Code("GET /research/countries", block=True),
+                dmc.Text("overview: one row per country for the whole period. daily: one row per country per UTC day. alerts: how often each alert type happened per country, and how long it took to fix. countries: which countries have data, with bin and reading counts and the date range.", size="sm"),
+                dmc.Text("Country code is optional. Times are ISO 8601 with a timezone; the range can be up to 366 days. Defaults to the last 30 days. Add format=csv to overview, daily or alerts to get a CSV file.", size="sm"),
+                dmc.Text("Sensor values come as the average, min, max and standard deviation (e.g. temperature_c, temperature_c_min, temperature_c_max, temperature_c_sd). No personal, bin, device or individual reading data is returned.", size="sm"),
                 linked_button("Explore data", "/research/data", "default", icon_name="chart"),
             ], gap="md"), padding="lg"),
         ]
