@@ -101,10 +101,20 @@ Common values for `CLOUD_API_URL`:
 ## How the pile is simulated
 
 `model.py` is `simulator/generator.py` rewritten to run step by step, and it
-reads the same stage table (`simulator/composting_stages.py`), so the two
-never disagree. Temperature eases towards each stage's range, moisture
-evaporates faster when the pile is active, and the gases follow how active the
-pile is. Noise and sensor limits match the simulator.
+reads the same stage table and pile curves (`simulator/composting_stages.py`),
+so the two never disagree. Temperature eases towards each stage's range,
+moisture evaporates faster when the pile is hot, and the gases follow how hot
+the pile is above ambient, whatever the stage, so they never jump when the
+stage changes. O₂ and CO₂ trade off one for one, so they add up to about 21 %.
+Noise and sensor limits match the simulator.
+
+Active thermophilic and peak decomposition share one heating curve. Peak
+decomposition starts once the core has held 55 °C for 6 hours, and ends with
+the hot phase, or early if the core drops below 55 °C for 12 hours. A bin that
+never gets that hot goes straight from active thermophilic to cooling.
+`CompostModel(heat_factor=...)` sizes the heat above ambient for the bin: 1.0
+is the full-size pile, about 0.2 a small Takakura basket that peaks near 35 °C.
+Each new batch starts at a random 50–65 % moisture.
 
 Readings carry real wall-clock timestamps (UTC, millisecond precision), as a
 real device with NTP would. Only the pile runs fast: each reading moves it on
@@ -116,10 +126,10 @@ The pile responds to care:
 
 | Action | Effect |
 | --- | --- |
-| Turn | O₂ jumps towards fresh air and CO₂ halves, both fading back over about half a day. The core loses about a fifth of its heat above ambient and recovers. Moisture drops 1.5 %. In the hot stages, each turn extends the stage by half a day (up to 3 days). |
+| Turn | O₂ and CO₂ move most of the way back to fresh air, fading back over about half a day. The core loses about a fifth of its heat above ambient and recovers. Moisture drops 1.5 %. In the hot stages, each turn extends the stage by half a day (up to 3 days). |
 | Add water | Moisture +6 % (capped at 85 %), with a brief small cool-down. |
 | Add feedstock | Starts a new batch at stage 0, warming from wherever the pile is now. |
-| (neglect) | Below 45 % moisture the microbes slow down: the pile cools and its stage clock slows. Below 30 % it stalls. Above 65 % it becomes waterlogged: O₂ falls and CO₂ rises. |
+| (neglect) | Below 40 % moisture the microbes slow down: the pile cools and its stage clock slows, and the model's `summary()` lists a `dry_pile` fault. Below 30 % it stalls (`stalled_pile`): it keeps its stage and carries on once watered. Above 65 % it becomes waterlogged: O₂ falls and CO₂ rises. |
 
 Unlike the simulator, the pile never gets turned or watered at random: that's
 up to you. Left alone, it runs through the stages and then dries out in

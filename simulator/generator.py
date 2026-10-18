@@ -5,6 +5,11 @@ a target instead of just picking random numbers, moisture slowly dries
 out with occasional "turning" bumps, and the gas readings are based on
 how active the pile is (linked to temperature) instead of being random
 too. At the end we add some noise to make it look like real sensor data.
+
+Active Thermophilic and Peak Decomposition share one heating curve, and a
+reading only counts as Peak Decomposition once the core has held 55C (see
+composting_stages.py). The gases and the drying rate don't depend on the
+stage at all, so nothing jumps the moment the stage changes.
 """
 import json
 import math
@@ -14,7 +19,15 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 
-from composting_stages import STAGES
+from composting_stages import (
+    PEAK_HOLD_DAYS,
+    PEAK_TEMP_C,
+    STAGES,
+    START_MOISTURE_PCT,
+    drying_per_day,
+    hot_phase_curve,
+    pile_gases,
+)
 
 # paths built off this script's own location, not wherever it's run from
 THIS_FOLDER = os.path.dirname(os.path.abspath(__file__))
@@ -32,6 +45,10 @@ FIELD_RULES = SCHEMA["items"]["properties"]
 AMBIENT_TEMP = 28.0
 SAMPLE_INTERVAL_MINUTES = 30
 TURNING_CHANCE_PER_DAY = 0.2
+TURNING_MOISTURE_BUMP = (2.0, 6.0)  # % a turn (or a shower) puts back, in any stage
+TOP_UP_BELOW_PCT = 50.0  # only a pile that's looking dry gets topped up
+MOISTURE_FLOOR = 15.0  # same limits as the emulator's pile
+MOISTURE_CEILING = 85.0
 MISSED_READING_CHANCE = 0.02
 
 TEMP_NOISE_STD = 0.5
@@ -91,6 +108,12 @@ def get_true_temp(days_in_stage, start_temp, target_temp, tau_days):
     return target_temp + (start_temp - target_temp) * math.exp(-days_in_stage / tau_days)
 
 
+def get_core_temp(curve_temp, heat_factor):
+    # the curve is for a full-size bin; a smaller one keeps less of the heat
+    # above ambient, and a pile never sits below ambient on its own
+    return AMBIENT_TEMP + heat_factor * max(0.0, curve_temp - AMBIENT_TEMP)
+
+
 def get_activity_level(temp):
     # 0 = pile is basically cold/inactive, 1 = pile is as hot as it ever gets
     activity = (temp - AMBIENT_TEMP) / (GLOBAL_PEAK_TEMP - AMBIENT_TEMP)
@@ -101,38 +124,30 @@ def get_activity_level(temp):
     return activity
 
 
-def update_moisture(moisture, activity, moisture_range, step_days):
-    low = moisture_range[0]
-    high = moisture_range[1]
-    span = high - low
+def update_moisture(moisture, activity, step_days):
+    # moisture slowly evaporates, faster when the pile is more active. The
+    # rate and the limits are the same in every stage: clamping to each
+    # stage's own range made moisture snap into place at a stage change
+    moisture = moisture - drying_per_day(activity) * step_days
 
-    # moisture slowly evaporates, faster when the pile is more active
-    daily_loss = span * 0.15
-    moisture = moisture - daily_loss * (0.5 + activity) * step_days
+    # every now and then the pile gets turned (or it rains) and moisture jumps
+    # back up - once it's drying out, or a well-kept pile would creep up to soaking
+    if moisture < TOP_UP_BELOW_PCT and random.random() < TURNING_CHANCE_PER_DAY * step_days:
+        moisture = moisture + random.uniform(TURNING_MOISTURE_BUMP[0], TURNING_MOISTURE_BUMP[1])
 
-    # every now and then the pile gets turned (or it rains) and moisture jumps back up
-    if random.random() < TURNING_CHANCE_PER_DAY * step_days:
-        moisture = moisture + random.uniform(0.4, 0.8) * span
-
-    if moisture < low - 2:
-        moisture = low - 2
-    if moisture > high + 2:
-        moisture = high + 2
+    if moisture < MOISTURE_FLOOR:
+        moisture = MOISTURE_FLOOR
+    if moisture > MOISTURE_CEILING:
+        moisture = MOISTURE_CEILING
 
     return moisture
 
 
-def get_true_gases(activity, stage):
-    o2_low, o2_high = stage["o2_range"]
-    co2_low, co2_high = stage["co2_range"]
-    nh3_low, nh3_high = stage["nh3_relative"]
-
-    # more activity = more oxygen used up, so this one goes the other way
-    o2 = o2_high - activity * (o2_high - o2_low)
-    co2 = co2_low + activity * (co2_high - co2_low)
-    nh3 = nh3_low + activity * (nh3_high - nh3_low)
-
-    return o2, co2, nh3
+def get_true_gases(activity):
+    # one curve for every stage (composting_stages.pile_gases): more activity
+    # = more oxygen used up and the same amount of CO2 made, so the gases
+    # follow the temperature and don't jump when the stage changes
+    return pile_gases(activity)
 
 
 def add_noise(value, std):
@@ -151,13 +166,28 @@ def clamp_to_schema(value, field_name):
 
 
 def generate_stage_data(stage, start_time, start_temp, start_moisture, days_left=None,
-                        sample_interval_minutes=None, noise=None):
+                        sample_interval_minutes=None, noise=None, heat_factor=1.0):
     if sample_interval_minutes is None:
         sample_interval_minutes = SAMPLE_INTERVAL_MINUTES
     noise = resolve_noise(noise)
 
     # how long this stage would naturally run for
     full_duration_days = get_stage_duration(stage)
+
+    hot_phase = stage["id"] == 1
+    if hot_phase:
+        # Active Thermophilic runs on into Peak Decomposition on the same
+        # heating curve, so this covers both stages
+        active_days = full_duration_days
+        full_duration_days = active_days + get_stage_duration(STAGES[2])
+        target_temp, tau_days = hot_phase_curve(start_temp, active_days, full_duration_days)
+    else:
+        target_temp = get_temp_target(start_temp, stage["temp_range"])
+        # tau is based on the stage's natural (untruncated) duration, so cutting
+        # the output short doesn't change how fast the stage actually behaves
+        tau_days = full_duration_days * 0.3
+        if tau_days < 0.25:
+            tau_days = 0.25
 
     # how long we're actually allowed to run it for, if a day limit was set
     duration_days = full_duration_days
@@ -170,31 +200,36 @@ def generate_stage_data(stage, start_time, start_temp, start_moisture, days_left
     if num_steps < 1:
         num_steps = 1
 
-    target_temp = get_temp_target(start_temp, stage["temp_range"])
-    # tau is based on the stage's natural (untruncated) duration, so cutting
-    # the output short doesn't change how fast the stage actually behaves
-    tau_days = full_duration_days * 0.3
-    if tau_days < 0.25:
-        tau_days = 0.25
-
     rows = []
     temp = start_temp
     moisture = start_moisture
+    label = stage
+    hot_hold_days = 0.0
 
     for step in range(num_steps):
         days_in_stage = step * step_days
         timestamp = start_time + timedelta(days=days_in_stage)
 
         temp = get_true_temp(days_in_stage, start_temp, target_temp, tau_days)
-        activity = get_activity_level(temp)
-        moisture = update_moisture(moisture, activity, stage["moisture_range"], step_days)
-        o2, co2, nh3 = get_true_gases(activity, stage)
+        core_temp = get_core_temp(temp, heat_factor)
+        activity = get_activity_level(core_temp)
+        moisture = update_moisture(moisture, activity, step_days)
+        o2, co2, nh3 = get_true_gases(activity)
+
+        # Peak Decomposition starts once the core has held 55C for a while;
+        # a bin that never gets that hot stays in Active Thermophilic
+        if core_temp >= PEAK_TEMP_C:
+            hot_hold_days = hot_hold_days + step_days
+        else:
+            hot_hold_days = 0.0
+        if hot_phase and hot_hold_days >= PEAK_HOLD_DAYS:
+            label = STAGES[2]
 
         # sometimes a reading just doesn't arrive (bad connection etc.)
         if random.random() < MISSED_READING_CHANCE:
             continue
 
-        temperature_reading = clamp_to_schema(round(add_noise(temp, noise["temperature_c"]), 2), "temperature_c")
+        temperature_reading = clamp_to_schema(round(add_noise(core_temp, noise["temperature_c"]), 2), "temperature_c")
         moisture_reading = clamp_to_schema(round(add_noise(moisture, noise["moisture_pct"]), 2), "moisture_pct")
         o2_reading = clamp_to_schema(round(add_noise(o2, noise["o2_pct"]), 2), "o2_pct")
         co2_reading = clamp_to_schema(round(add_noise(co2, noise["co2_pct"]), 2), "co2_pct")
@@ -202,8 +237,8 @@ def generate_stage_data(stage, start_time, start_temp, start_moisture, days_left
 
         rows.append({
             "timestamp": timestamp,
-            "stage_id": stage["id"],
-            "stage_name": stage["name"],
+            "stage_id": label["id"],
+            "stage_name": label["name"],
             "temperature_c": temperature_reading,
             "moisture_pct": moisture_reading,
             "o2_pct": o2_reading,
@@ -216,7 +251,7 @@ def generate_stage_data(stage, start_time, start_temp, start_moisture, days_left
 
 
 def generate_bin_data(start_time=None, seed=None, start_stage_id=0, max_days=None,
-                      sample_interval_minutes=None, noise=None):
+                      sample_interval_minutes=None, noise=None, heat_factor=1.0):
     """
     start_time    - when the simulated timeline begins (defaults to now)
     seed          - set this to get the exact same "random" data every run
@@ -226,6 +261,10 @@ def generate_bin_data(start_time=None, seed=None, start_stage_id=0, max_days=Non
     sample_interval_minutes - gap between readings (None = SAMPLE_INTERVAL_MINUTES)
     noise         - per-sensor standard deviations, e.g. {"temperature_c": 0.5}.
                      Anything left out falls back to NOISE_DEFAULTS.
+    heat_factor   - how much of a full-size pile's heat above ambient the bin
+                     keeps: 1.0 = the stage table as written, about 0.2 = a
+                     small Takakura basket that peaks near 35C. A bin that
+                     never holds 55C skips Peak Decomposition.
     """
     if seed is not None:
         random.seed(seed)
@@ -241,14 +280,20 @@ def generate_bin_data(start_time=None, seed=None, start_stage_id=0, max_days=Non
     if first_stage["id"] == 0:
         # Stage 0 specifically can't start below ambient (see composting_stages.py)
         temp = AMBIENT_TEMP
+        # every batch starts a little wetter or drier, so moisture isn't a clock
+        moisture = random.uniform(START_MOISTURE_PCT[0], START_MOISTURE_PCT[1])
     else:
         temp = (first_stage["temp_range"][0] + first_stage["temp_range"][1]) / 2
-    moisture = (first_stage["moisture_range"][0] + first_stage["moisture_range"][1]) / 2
+        moisture = random.uniform(first_stage["moisture_range"][0], first_stage["moisture_range"][1])
 
     all_rows = []
     days_used = 0.0
 
     for stage in stages_to_run:
+        # Peak Decomposition is part of Active Thermophilic's run when that came first
+        if stage["id"] == 2 and first_stage["id"] < 2:
+            continue
+
         days_left = None
         if max_days is not None:
             days_left = max_days - days_used
@@ -259,6 +304,7 @@ def generate_bin_data(start_time=None, seed=None, start_stage_id=0, max_days=Non
             stage, current_time, temp, moisture, days_left,
             sample_interval_minutes=sample_interval_minutes,
             noise=noise,
+            heat_factor=heat_factor,
         )
         all_rows = all_rows + rows
         days_used = days_used + days_added
