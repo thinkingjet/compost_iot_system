@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import dash_mantine_components as dmc
-from dash import dcc
+from dash import dcc, html
 
 import api_client
 from api_client import ApiError, ApiUnavailable, NotAuthenticated
@@ -56,6 +56,42 @@ ALERT_TEXT = {
     "low_oxygen": ("Oxygen is very low", "Turn the pile to let air in"),
     "high_co2": ("CO₂ is very high", "Turn the pile to let air in"),
     "offline": ("Sensor offline", "Check its power and Wi-Fi"),
+}
+
+# What to do about each alert, for the Maintenance tab. From the BC Ministry of
+# Agriculture troubleshooting factsheet (2025), Cornell Composting and UC ANR;
+# the offline steps and checking the lid are ours. To be checked with Prof. Komang.
+MAINTENANCE_STEPS = {
+    "too_hot": [
+        "Turn the pile to let the heat out.",
+        "If it stays hot, make the pile smaller.",
+        "Check it hasn’t dried out, and add water while turning if it has.",
+    ],
+    "too_dry": [
+        "Add water while turning the pile, so it spreads evenly.",
+        "Stop when a squeezed handful feels damp and holds its shape but doesn’t drip.",
+        "Cover the bin to keep the moisture in.",
+    ],
+    "too_wet": [
+        "Turn the pile to let excess water evaporate.",
+        "If it’s still soggy, mix in dry material (sawdust, wood chips, dry leaves, shredded cardboard) and turn again.",
+        "Cover the bin to keep rain out.",
+    ],
+    "low_oxygen": [
+        "Turn the pile to let air in.",
+        "Mix in coarse, dry material (wood chips, twigs) to open up air channels.",
+        "If it smells like rotten eggs, it’s probably too wet or packed down: follow the steps for a wet pile.",
+    ],
+    "high_co2": [
+        "Turn the pile: the microbes are using up the air faster than it gets in.",
+        "Mix in coarse material so air can move through.",
+        "Check the lid and vents aren’t blocked.",
+    ],
+    "offline": [
+        "Check the device has power.",
+        "Check it’s in range of the Wi-Fi.",
+        "Restart it.",
+    ],
 }
 
 
@@ -261,18 +297,23 @@ def live_panel(kind, readings, device_names):
     return dmc.Box([readings_strip(readings), dmc.Card([toolbar, chart, gas_chart], padding="md")])
 
 
-def maintenance_panel():
-    # needs the prediction model (D6); until then, say so instead of made-up tasks
-    return dmc.Card(
-        [
-            _card_title("Smart schedule", "Estimated next tasks"),
-            dmc.Text(
-                "MAYBE coming with the prediction model: it will suggest when to turn or water the pile, and when the compost will be ready.",
-                c="dimmed", size="sm", mt="md",
-            ),
-        ],
-        padding="md",
-    )
+def maintenance_panel(alerts):
+    """Steps to fix each of the bin's open alerts (GET /alerts?bin_id=...), one card each."""
+    if not alerts:
+        return dmc.Card(dmc.Text("Nothing to do right now. Steps will show here if this bin needs attention.", c="dimmed", size="sm"), padding="md")
+    cards = []
+    for alert in alerts:
+        title = ALERT_TEXT.get(alert["type"], (alert["type"],))[0]
+        if alert["type"] == "offline":
+            title += f" · {alert['device_name'] or 'Sensor'}"
+        cards.append(dmc.Card(
+            [
+                _card_title(f"Started {time_ago(alert['triggered_at'])}", title),
+                dmc.List([dmc.ListItem(step) for step in MAINTENANCE_STEPS.get(alert["type"], [])], type="ordered", size="sm", mt="sm"),
+            ],
+            padding="md",
+        ))
+    return dmc.SimpleGrid(cards, cols={"base": 1, "md": 2})
 
 
 # the daily averages GET /bins/{id}/history returns besides temperature
@@ -489,7 +530,7 @@ def detail_page(kind, item_id, tab):
     elif tab == "settings":
         panel = settings_panel(kind)
     elif tab == "maintenance":
-        panel = maintenance_panel()
+        panel = maintenance_panel([])
     else:
         panel = devices_panel()
 
@@ -510,7 +551,7 @@ def bin_detail_page(bin_id, tab):
         all_devices = api_client.list_devices() if tab in ("devices", "live") else []
         readings = api_client.get_bin_records(bin_id) if tab == "live" else []
         history = api_client.get_bin_history(bin_id) if tab == "history" else []
-        alerts = api_client.list_alerts(bin_id=bin_id) if tab == "live" else []
+        alerts = api_client.list_alerts(bin_id=bin_id) if tab in ("live", "maintenance") else []
     except NotAuthenticated:
         return dmc.Alert("Your session has ended. Please sign in again.", color="yellow")
     except ApiError:
@@ -524,7 +565,7 @@ def bin_detail_page(bin_id, tab):
     elif tab == "settings":
         panel = bin_settings_panel(bin_data)
     elif tab == "maintenance":
-        panel = maintenance_panel()
+        panel = maintenance_panel(alerts)
     elif tab == "devices":
         # the API lists all the user's devices; keep the ones in this bin
         panel = bin_devices_panel(bin_data, [d for d in all_devices if d["bin"] and d["bin"]["id"] == bin_id])
@@ -857,13 +898,10 @@ def new_bin_page():
 
 
 # ---------------------------------------------------------------- research ---
-# A researcher's pages, and the only ones they have. Empty for now:
-# registering for a research API key is being built separately, and fills
-# in "research-keys".
+# A researcher's pages, and the only ones they have.
 
-def _coming_soon(icon_name, text, component_id=None):
+def _coming_soon(icon_name, text):
     """An empty page's one card, until what goes on it is built."""
-    props = {"id": component_id} if component_id else {}
     return dmc.Card(
         dmc.Stack(
             [
@@ -875,24 +913,143 @@ def _coming_soon(icon_name, text, component_id=None):
             py="xl",
         ),
         padding="lg",
-        **props,
+    )
+
+
+def research_keys_card(keys, new_key=None):
+    """The researcher's keys (GET /auth/research-keys), the form for a new
+    one, and a new key, shown this once."""
+    shown = []
+    if new_key:
+        shown = [dmc.Alert(
+            [
+                dmc.Text("Copy it now: this is the only time it’s shown.", size="sm", mb="xs"),
+                dmc.Group(
+                    [
+                        dmc.Code(new_key, id="research-new-key", fz="sm", flex=1, style={"wordBreak": "break-all"}),
+                        dmc.CopyButton(target_id="research-new-key", children="Copy", copiedChildren="Copied", size="xs", variant="default"),
+                    ],
+                    wrap="nowrap",
+                ),
+            ],
+            title="Your new key",
+            color="yellow",
+            variant="light",
+        )]
+    rows = [
+        dmc.Group(
+            [
+                dmc.Stack([dmc.Text(key["name"], fw=600, size="sm"), dmc.Text(f"Created {time_ago(key['created_at'])}", c="dimmed", size="xs")], gap=0),
+                dcc.ConfirmDialogProvider(
+                    button("Delete", "light", color="red", size="xs"),
+                    id={"type": "research-key-delete", "id": key["id"]},
+                    message=f"Delete the key “{key['name']}”? Anything using it stops working at once.",
+                ),
+            ],
+            justify="space-between",
+        )
+        for key in keys
+    ]
+    form = dmc.Group(
+        [
+            dmc.TextInput(id="research-key-name", placeholder="Key name, e.g. Lab server", value="", flex=1),
+            button("Create key", icon_name="key", component_id="research-key-create"),
+        ],
+    )
+    return dmc.Stack(
+        [
+            *shown,
+            form,
+            *(rows or [dmc.Text("No keys yet.", c="dimmed", size="sm")]),
+            dmc.Text(["You can have up to 5 keys. Send one in the ", dmc.Code("x-research-key"), " header."], c="dimmed", size="xs"),
+        ],
     )
 
 
 def research_keys_page():
-    return dmc.Box(
-        [
-            page_header("Research", "API keys", "Register for a key to query the anonymised CompostIQ dataset."),
-            _coming_soon("key", "You’ll register for your research API key here.", "research-keys"),
-        ]
-    )
+    header = page_header("Research", "Research access", "Create a key to query anonymised CompostIQ data.")
+    try:
+        keys = api_client.list_research_keys()
+    except NotAuthenticated:
+        return dmc.Box([header, dmc.Alert("Your session has ended. Please sign in again.", color="yellow")])
+    except (ApiError, ApiUnavailable):
+        return dmc.Box([header, dmc.Alert("Can’t load your keys right now. Try again in a moment.", color="red")])
+    return dmc.Stack([
+        header,
+        dmc.Text("Your account can read country-level aggregates. Create a key below, copy it once, then use it with the research API.", size="sm"),
+        dmc.Card(research_keys_card(keys), id="research-keys", padding="lg"),
+        dmc.Group([
+            linked_button("Explore data", "/research/data", "default", icon_name="chart"),
+            linked_button("API documentation", "/research/docs", "default", icon_name="book"),
+        ]),
+    ], gap="md")
+
+
+RESEARCH_COLUMNS = [
+    ("day", "UTC day"), ("country_code", "Country"), ("bin_count", "Bins"),
+    ("reading_count", "Readings"), ("temperature_c", "Temp °C"),
+    ("moisture_percent", "Moisture %"), ("o2_percent", "O₂ %"),
+    ("co2_percent", "CO₂ %"), ("nh3_ratio", "NH₃ ratio"),
+]
+
+
+def research_data_result(result):
+    rows = result["data"]
+    # overview rows have no day
+    columns = [column for column in RESEARCH_COLUMNS if column[0] != "day" or (rows and "day" in rows[0])]
+    if not rows:
+        return dmc.Alert(
+            "No readings found for these filters.",
+            color="blue", variant="light",
+        )
+    return dmc.Stack([
+        dmc.Text(f"{len(rows)} rows", size="sm", c="dimmed"),
+        dmc.ScrollArea(html.Table([
+            html.Thead(html.Tr([html.Th(label) for _, label in columns])),
+            html.Tbody([html.Tr([html.Td(str(row.get(key, ""))[:10] if key == "day" else row.get(key, ""))
+                                 for key, _ in columns]) for row in rows]),
+        ], style={"width": "100%", "borderCollapse": "collapse"})),
+    ], gap="sm")
+
+
+def research_data_page():
+    today = datetime.now().astimezone().date()
+    start = (today - timedelta(days=30)).isoformat() + "T00:00:00Z"
+    end = today.isoformat() + "T23:59:59Z"
+    try:
+        initial = research_data_result(api_client.research_data("daily", start=start, end=end))
+    except (ApiError, ApiUnavailable, NotAuthenticated):
+        initial = dmc.Alert("Could not load research data right now.", color="red")
+    return dmc.Stack([
+        page_header("Research", "Explore data", "Country-level compost readings across participating owners."),
+        dmc.Card(dmc.Stack([
+            dmc.Group([
+                dmc.SegmentedControl(id="research-kind", value="daily", data=[
+                    {"label": "Daily", "value": "daily"}, {"label": "Overall", "value": "overview"}]),
+                dmc.TextInput(id="research-country", label="Country code", placeholder="All countries or ID", inputProps={"maxLength": 2}),
+                dmc.TextInput(id="research-start", label="From (ISO 8601)", value=start),
+                dmc.TextInput(id="research-end", label="To (ISO 8601)", value=end),
+                button("Apply filters", component_id="research-data-apply"),
+            ], align="end"),
+            dmc.Text("Data is grouped by UTC day. Names, locations, IDs and individual readings are excluded.", size="xs", c="dimmed"),
+            dmc.Box(initial, id="research-data-result"),
+        ], gap="md"), padding="lg"),
+        linked_button("Use the research API", "/research/docs", "default", icon_name="book"),
+    ], gap="lg")
 
 
 def research_docs_page():
     return dmc.Box(
         [
             page_header("Research", "Docs", "How to use the research API, and what its data holds."),
-            _coming_soon("book", "The research API’s docs will be here."),
+            dmc.Card(dmc.Stack([
+                dmc.Text("Create an API key on the API keys page. Send it as x-research-key in each request.", size="sm"),
+                dmc.Code("GET /research/overview?country_code=ID&start=2026-10-01T00:00:00Z&end=2026-10-16T00:00:00Z", block=True),
+                dmc.Code("GET /research/daily?country_code=ID&start=2026-10-01T00:00:00Z&end=2026-10-16T00:00:00Z", block=True),
+                dmc.Text("Country code is optional. Times are ISO 8601 with a timezone; the range can be up to 366 days. Defaults to the last 30 days.", size="sm"),
+                dmc.Text("Results include country, number of bins and readings, and averages for temperature, moisture, O₂, CO₂ and relative NH₃. Daily groups use UTC. No personal, bin, device or individual reading data is returned.", size="sm"),
+                linked_button("Explore data", "/research/data", "default", icon_name="chart"),
+            ], gap="md"), padding="lg"),
         ]
     )
 

@@ -12,6 +12,7 @@ Three things can go wrong, and callers handle each differently:
   ApiError          the API refused the request (409, 422, a wrong password...)
 """
 import requests
+from urllib.parse import urlencode
 from flask import session
 
 from settings import API_URL
@@ -180,6 +181,28 @@ def update_device(device_id, name=None, bin_id=None):
 
 def get_device_records(device_id, hours=24):
     return _request("GET", f"/devices/{device_id}/records?hours={hours}")
+
+
+# ---------------------------------------------------------- research keys ---
+
+def list_research_keys():
+    return _request("GET", "/auth/research-keys")
+
+
+def create_research_key(name):
+    """{id, name, created_at, api_key}: the key comes back this once."""
+    return _request("POST", "/auth/research-keys", json={"name": name})
+
+
+def delete_research_key(key_id):
+    return _request("DELETE", f"/auth/research-keys/{key_id}")
+
+
+def research_data(kind="overview", country_code=None, start=None, end=None):
+    """Signed-in dashboard preview of the same aggregates served by research keys."""
+    params = {k: v for k, v in {"country_code": country_code, "start": start, "end": end}.items() if v}
+    suffix = "?" + urlencode(params) if params else ""
+    return _request("GET", f"/research/preview/{kind}{suffix}")
 
 
 # ------------------------------------------------------------------ alerts ---

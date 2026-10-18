@@ -343,6 +343,7 @@ NAVIGATION = {
         (
             "Research",
             [
+                ("/research/data", "chart", "Explore data"),
                 ("/research", "key", "API keys"),
                 ("/research/docs", "book", "Docs"),
             ],

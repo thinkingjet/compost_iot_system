@@ -45,8 +45,9 @@ Every account is one of two types (`users.role`, chosen at sign-up), and each ty
 | `/devices/add` | owner | the pairing wizard: get a code → the device redeems it → confirm its hardware ID → name and bin → wait for the first reading. `?device=<id>` resumes setup for a device paired earlier |
 | `/devices/register` | owner | registering without pairing: name and bin → the device's API key, shown once with the endpoint and an example → wait for the first reading. `?device=<id>` gives a registered device a new bin after its bin was deleted |
 | `/device/<id>/<tab>` | owner | one device: live readings, history, settings (rename, move to another bin). A registered device's settings also have **New API key**: confirm, then the replacement key, shown once (the old one stops working) |
-| `/research` | researcher | registering for a research API key. Empty for now (*Coming soon*); the key work fills in `research-keys` |
-| `/research/docs` | researcher | the research API's docs. Empty for now |
+| `/research` | researcher | create and revoke research API keys; the first step after registration |
+| `/research/data` | researcher | filter and view anonymised daily country aggregates |
+| `/research/docs` | researcher | research API routes, parameters and privacy rules |
 | `/account` | owner, researcher | display name, account type, change password, delete account |
 | anything else | | 404 page |
 
