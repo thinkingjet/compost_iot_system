@@ -180,8 +180,8 @@ Compost passes through five stages, each with its own expected temperature. Comp
 ```mermaid
 flowchart LR
     s0["Early mesophilic<br/>28 to 45 °C<br/>about 2 days"]
-    s1["Active thermophilic<br/>45 to 60 °C<br/>about 3 days"]
-    s2["Peak decomposition<br/>57 to 65 °C<br/>about 5 days"]
+    s1["Active thermophilic<br/>45 to 55 °C<br/>about 3 days"]
+    s2["Peak decomposition<br/>held at 55 °C or above<br/>about 5 days"]
     s3["Cooling<br/>60 down to 30 °C<br/>about 8 days"]
     s4["Maturation<br/>28 to 32 °C<br/>about 30 days"]
     s0 --> s1 --> s2 --> s3 --> s4
@@ -196,7 +196,7 @@ flowchart LR
     class s4 mature
 ```
 
-One milestone matters most: holding **55 °C or above for three days in a row** kills pathogens, which is the EPA Class A sanitation target.
+One milestone matters most: holding **55 °C or above for three days in a row** kills pathogens, which is the EPA Class A sanitation target. Peak decomposition is that stretch: it starts once the core has held 55 °C for 6 hours, and a bin that never gets that hot, like a small Takakura basket, goes straight from active thermophilic to cooling.
 
 The ranges and their sources are in [`simulator/composting_stages.py`](simulator/composting_stages.py).
 

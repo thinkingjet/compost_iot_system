@@ -1,0 +1,8 @@
+# ml/compost_stage_classifier.ipynb
+pandas>=2.2
+numpy>=1.26
+matplotlib>=3.8
+scikit-learn>=1.4
+torch>=2.2
+joblib>=1.3
+jupyter
