@@ -17,6 +17,8 @@ visitors there and signed-in users to their home page.
 
 Run it with:  python monitoringSystem/app.py
 """
+import csv
+import io
 import logging
 import re
 import secrets
@@ -1497,6 +1499,30 @@ def filter_research_data(_clicks, country, start, end, kind):
     except (ApiError, ApiUnavailable, NotAuthenticated) as error:
         return dmc.Alert(str(error.detail) if isinstance(error, ApiError) else "Could not load research data.", color="red")
     return research_data_result(result)
+
+@callback(
+    Output("research-download", "data"),
+    Input("research-download-button", "n_clicks"),
+    State("research-kind", "value"),
+    State("research-country", "value"),
+    State("research-start", "value"),
+    State("research-end", "value"),
+    prevent_initial_call=True,
+)
+def download_research_data(n_clicks, kind, country, start, end):
+    """The rows the filters select, as a CSV file."""
+    if not n_clicks:
+        return no_update
+    try:
+        rows = api_client.research_data(kind, country_code=country, start=start, end=end)["data"]
+    except (ApiError, ApiUnavailable, NotAuthenticated):
+        return no_update
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=list(rows[0]) if rows else [])
+    writer.writeheader()
+    writer.writerows(rows)
+    return dcc.send_string(out.getvalue(), f"compostiq-research-{kind}.csv")
+
 
 @callback(
     Output("research-keys", "children"),

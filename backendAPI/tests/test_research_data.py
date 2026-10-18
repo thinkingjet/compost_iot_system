@@ -63,3 +63,40 @@ def test_research_key_stops_working_if_account_role_changes(client, researcher):
         db.execute(text("UPDATE users SET role = 'owner' WHERE id = :id"),
                    {"id": researcher["user"]["id"]})
     assert client.get("/research/overview", headers=headers).status_code == 401
+
+
+def test_spread_alerts_countries_and_csv(client, researcher, account):
+    key = client.post("/auth/research-keys", json={"name": "analysis"},
+                      headers=researcher["headers"]).json()["api_key"]
+    headers = {"x-research-key": key}
+    query = "?country_code=ZY&start=2000-01-01T00:00:00Z&end=2000-01-03T00:00:00Z"
+    with db_engine.begin() as db:
+        bin_id = db.execute(text("""
+            INSERT INTO bins (user_id, name, location, country_code)
+            VALUES (:user_id, 'Spread test bin', 'private', 'ZY') RETURNING id
+        """), {"user_id": account["user"]["id"]}).scalar_one()
+        for temperature in (40, 60):
+            db.execute(text("""
+                INSERT INTO records (device_id, bin_id, timestamp, temperature,
+                                     moisture_percent, o2_percent, co2_percent, nh3_ratio)
+                VALUES ('00000000-0000-4000-8000-000000000201', :bin_id,
+                        '2000-01-01T12:00:00Z', :temperature, 50, 10, 5, 0.5)
+            """), {"bin_id": bin_id, "temperature": temperature})
+        db.execute(text("""
+            INSERT INTO bin_events (bin_id, type, severity, triggered_at, resolved_at)
+            VALUES (:bin_id, 'too_hot', 'high', '2000-01-01T12:00:00Z', '2000-01-01T14:00:00Z')
+        """), {"bin_id": bin_id})
+
+    row = client.get("/research/overview" + query, headers=headers).json()["data"][0]
+    assert (row["temperature_c"], row["temperature_c_min"], row["temperature_c_max"]) == (50.0, 40.0, 60.0)
+    assert row["temperature_c_sd"] > 0
+
+    alerts = client.get("/research/alerts" + query, headers=headers).json()["data"]
+    assert alerts == [{"country_code": "ZY", "type": "too_hot", "alert_count": 1, "bin_count": 1, "avg_hours_to_resolve": 2.0}]
+
+    zy = [c for c in client.get("/research/countries", headers=headers).json() if c["country_code"] == "ZY"]
+    assert zy[0]["bin_count"] == 1 and zy[0]["reading_count"] == 2
+
+    response = client.get("/research/daily" + query + "&format=csv", headers=headers)
+    assert response.headers["content-type"].startswith("text/csv")
+    assert response.text.splitlines()[0].startswith("country_code,day,bin_count,reading_count,temperature_c")
