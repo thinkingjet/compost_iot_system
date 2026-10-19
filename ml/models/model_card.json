@@ -1,0 +1,496 @@
+{
+  "model": "HistGradientBoostingClassifier (scikit-learn), class_weight=balanced",
+  "created": "2026-10-18T02:38:43Z",
+  "sklearn_version": "1.9.1",
+  "python": "3.12.14",
+  "feature_set": "core + moisture + ambient",
+  "features": [
+    "temp",
+    "temp_mean_6h",
+    "temp_mean_24h",
+    "temp_slope_6h",
+    "temp_slope_24h",
+    "temp_std_24h",
+    "temp_peak",
+    "below_peak",
+    "hours_since_peak",
+    "hours_above_45",
+    "hours_above_55",
+    "hours_above_55_run",
+    "moist",
+    "moist_mean_24h",
+    "moist_slope_24h",
+    "ambient_known",
+    "amb_mean_24h",
+    "dT",
+    "dT_mean_24h",
+    "dT_peak"
+  ],
+  "settings": {
+    "learning_rate": 0.1,
+    "max_iter": 48,
+    "max_leaf_nodes": 63,
+    "min_samples_leaf": 20,
+    "l2_regularization": 0.0,
+    "every_h": 1
+  },
+  "settings_name": "lr 0.1, 63 leaves",
+  "stage_filter_skip_share": 0.9,
+  "stage_filter_speed": 8.0,
+  "stages": {
+    "0": "Early Mesophilic",
+    "1": "Active Thermophilic",
+    "2": "Peak Decomposition",
+    "3": "Cooling",
+    "4": "Maturation"
+  },
+  "trained_on": [
+    "train",
+    "validation"
+  ],
+  "data": {
+    "train": {
+      "path": "ml/datasets/train.csv.gz",
+      "sha256": "b0bdb20151906e2eaaed6965b9e88eb2c32f2b929bafa28db5b4314599ccf6c2",
+      "batches": 800,
+      "hourly_rows": 1030991
+    },
+    "validation": {
+      "path": "ml/datasets/validation.csv.gz",
+      "sha256": "cf388d08e57198b383fd5f88945fbf202a73d3c199fb4fd1d609790ca79b8d11",
+      "batches": 200,
+      "hourly_rows": 264617
+    },
+    "test_grid": {
+      "path": "ml/datasets/test_grid.csv.gz",
+      "sha256": "55e46a2318fb3d793e3f029f2318c65e1ba7808fd09da466765929f1605ba91a",
+      "batches": 300,
+      "hourly_rows": 414507
+    }
+  },
+  "test_grid_overall": {
+    "raw": {
+      "macro_f1": 0.9437,
+      "balanced_accuracy": 0.9575,
+      "accuracy": 0.9506
+    },
+    "filtered": {
+      "macro_f1": 0.9455,
+      "balanced_accuracy": 0.9589,
+      "accuracy": 0.9551
+    }
+  },
+  "test_grid_by_scenario": [
+    {
+      "scenario": "ambient_cool",
+      "batches": 15,
+      "raw": 0.9334,
+      "filtered": 0.9487,
+      "filtered accuracy": 0.9725
+    },
+    {
+      "scenario": "ambient_hot",
+      "batches": 15,
+      "raw": 0.9627,
+      "filtered": 0.9631,
+      "filtered accuracy": 0.9765
+    },
+    {
+      "scenario": "baseline",
+      "batches": 15,
+      "raw": 0.9258,
+      "filtered": 0.9299,
+      "filtered accuracy": 0.9351
+    },
+    {
+      "scenario": "bin_medium",
+      "batches": 15,
+      "raw": 0.9523,
+      "filtered": 0.9503,
+      "filtered accuracy": 0.9588
+    },
+    {
+      "scenario": "bin_small",
+      "batches": 15,
+      "raw": 0.9513,
+      "filtered": 0.9462,
+      "filtered accuracy": 0.9635
+    },
+    {
+      "scenario": "bin_tiny",
+      "batches": 15,
+      "raw": 0.95,
+      "filtered": 0.9502,
+      "filtered accuracy": 0.9672
+    },
+    {
+      "scenario": "care_diligent",
+      "batches": 15,
+      "raw": 0.9695,
+      "filtered": 0.9687,
+      "filtered accuracy": 0.9819
+    },
+    {
+      "scenario": "care_neglected",
+      "batches": 15,
+      "raw": 0.9556,
+      "filtered": 0.9559,
+      "filtered accuracy": 0.9821
+    },
+    {
+      "scenario": "care_overwatered",
+      "batches": 15,
+      "raw": 0.9614,
+      "filtered": 0.9567,
+      "filtered accuracy": 0.9789
+    },
+    {
+      "scenario": "dropouts_10pct",
+      "batches": 15,
+      "raw": 0.9446,
+      "filtered": 0.9514,
+      "filtered accuracy": 0.9521
+    },
+    {
+      "scenario": "dropouts_25pct",
+      "batches": 15,
+      "raw": 0.9228,
+      "filtered": 0.9173,
+      "filtered accuracy": 0.8847
+    },
+    {
+      "scenario": "mq135_drift",
+      "batches": 15,
+      "raw": 0.9309,
+      "filtered": 0.9354,
+      "filtered accuracy": 0.9431
+    },
+    {
+      "scenario": "no_ambient_probe",
+      "batches": 15,
+      "raw": 0.942,
+      "filtered": 0.9413,
+      "filtered accuracy": 0.9342
+    },
+    {
+      "scenario": "no_mq135",
+      "batches": 15,
+      "raw": 0.9572,
+      "filtered": 0.9544,
+      "filtered accuracy": 0.9651
+    },
+    {
+      "scenario": "noise_extreme",
+      "batches": 15,
+      "raw": 0.9424,
+      "filtered": 0.9448,
+      "filtered accuracy": 0.9702
+    },
+    {
+      "scenario": "noise_high",
+      "batches": 15,
+      "raw": 0.9292,
+      "filtered": 0.9418,
+      "filtered accuracy": 0.9419
+    },
+    {
+      "scenario": "noise_low",
+      "batches": 15,
+      "raw": 0.9339,
+      "filtered": 0.9373,
+      "filtered accuracy": 0.9598
+    },
+    {
+      "scenario": "sampling_15min",
+      "batches": 15,
+      "raw": 0.9329,
+      "filtered": 0.9383,
+      "filtered accuracy": 0.9326
+    },
+    {
+      "scenario": "sampling_60min",
+      "batches": 15,
+      "raw": 0.9548,
+      "filtered": 0.9523,
+      "filtered accuracy": 0.9613
+    },
+    {
+      "scenario": "worst_case",
+      "batches": 15,
+      "raw": 0.9244,
+      "filtered": 0.9282,
+      "filtered accuracy": 0.9564
+    }
+  ],
+  "experiments": {
+    "feature_sets": [
+      {
+        "feature set": "core probe + moisture",
+        "features": 15,
+        "trees": 33,
+        "raw": 0.9259,
+        "filtered": 0.924
+      },
+      {
+        "feature set": "scale-free",
+        "features": 10,
+        "trees": 31,
+        "raw": 0.8581,
+        "filtered": 0.8576
+      },
+      {
+        "feature set": "core + moisture + ambient",
+        "features": 20,
+        "trees": 36,
+        "raw": 0.9301,
+        "filtered": 0.9269
+      },
+      {
+        "feature set": "all hardware (+ scale-free)",
+        "features": 25,
+        "trees": 33,
+        "raw": 0.9292,
+        "filtered": 0.9251
+      },
+      {
+        "feature set": "all hardware + MQ-135",
+        "features": 28,
+        "trees": 34,
+        "raw": 0.9285,
+        "filtered": 0.9268
+      },
+      {
+        "feature set": "+ simulated O2/CO2/NH3",
+        "features": 31,
+        "trees": 30,
+        "raw": 0.9326,
+        "filtered": 0.9284
+      }
+    ],
+    "hyperparameters": [
+      {
+        "settings": "lr 0.1, 31 leaves",
+        "trees": 49,
+        "raw": 0.9301,
+        "filtered": 0.9243,
+        "fit seconds": 15
+      },
+      {
+        "settings": "lr 0.05, 31 leaves",
+        "trees": 83,
+        "raw": 0.9306,
+        "filtered": 0.9252,
+        "fit seconds": 27
+      },
+      {
+        "settings": "lr 0.1, 63 leaves",
+        "trees": 48,
+        "raw": 0.9344,
+        "filtered": 0.9302,
+        "fit seconds": 22
+      },
+      {
+        "settings": "lr 0.1, 15 leaves",
+        "trees": 64,
+        "raw": 0.9262,
+        "filtered": 0.9212,
+        "fit seconds": 16
+      },
+      {
+        "settings": "lr 0.1, 31 leaves, 200 rows per leaf, l2 1.0",
+        "trees": 53,
+        "raw": 0.9287,
+        "filtered": 0.923,
+        "fit seconds": 18
+      },
+      {
+        "settings": "lr 0.1, 31 leaves, every 2nd hour",
+        "trees": 49,
+        "raw": 0.9323,
+        "filtered": 0.9274,
+        "fit seconds": 12
+      },
+      {
+        "settings": "lr 0.1, 31 leaves, every 3rd hour",
+        "trees": 57,
+        "raw": 0.9321,
+        "filtered": 0.9269,
+        "fit seconds": 13
+      }
+    ],
+    "learning_curve": [
+      {
+        "training batches": 25,
+        "hourly rows": 34061,
+        "trees": 40,
+        "raw": 0.8855,
+        "filtered": 0.8823
+      },
+      {
+        "training batches": 50,
+        "hourly rows": 65524,
+        "trees": 43,
+        "raw": 0.9042,
+        "filtered": 0.905
+      },
+      {
+        "training batches": 100,
+        "hourly rows": 128015,
+        "trees": 43,
+        "raw": 0.9174,
+        "filtered": 0.9217
+      },
+      {
+        "training batches": 200,
+        "hourly rows": 255046,
+        "trees": 44,
+        "raw": 0.9125,
+        "filtered": 0.9137
+      },
+      {
+        "training batches": 400,
+        "hourly rows": 509593,
+        "trees": 42,
+        "raw": 0.9225,
+        "filtered": 0.9172
+      },
+      {
+        "training batches": 800,
+        "hourly rows": 1030991,
+        "trees": 48,
+        "raw": 0.9344,
+        "filtered": 0.9302
+      },
+      {
+        "training batches": 1600,
+        "hourly rows": 2069045,
+        "trees": 56,
+        "raw": 0.9354,
+        "filtered": 0.9314
+      }
+    ],
+    "filter": [
+      {
+        "filter": "speed 1, skip 0.2",
+        "speed": 1.0,
+        "skip share": 0.2,
+        "filtered": 0.93
+      },
+      {
+        "filter": "speed 1, skip 0.4",
+        "speed": 1.0,
+        "skip share": 0.4,
+        "filtered": 0.9302
+      },
+      {
+        "filter": "speed 1, skip 0.6",
+        "speed": 1.0,
+        "skip share": 0.6,
+        "filtered": 0.9303
+      },
+      {
+        "filter": "speed 1, skip 0.8",
+        "speed": 1.0,
+        "skip share": 0.8,
+        "filtered": 0.9303
+      },
+      {
+        "filter": "speed 1, skip 0.9",
+        "speed": 1.0,
+        "skip share": 0.9,
+        "filtered": 0.9302
+      },
+      {
+        "filter": "speed 2, skip 0.2",
+        "speed": 2.0,
+        "skip share": 0.2,
+        "filtered": 0.9313
+      },
+      {
+        "filter": "speed 2, skip 0.4",
+        "speed": 2.0,
+        "skip share": 0.4,
+        "filtered": 0.9314
+      },
+      {
+        "filter": "speed 2, skip 0.6",
+        "speed": 2.0,
+        "skip share": 0.6,
+        "filtered": 0.9315
+      },
+      {
+        "filter": "speed 2, skip 0.8",
+        "speed": 2.0,
+        "skip share": 0.8,
+        "filtered": 0.9315
+      },
+      {
+        "filter": "speed 2, skip 0.9",
+        "speed": 2.0,
+        "skip share": 0.9,
+        "filtered": 0.9315
+      },
+      {
+        "filter": "speed 4, skip 0.2",
+        "speed": 4.0,
+        "skip share": 0.2,
+        "filtered": 0.9325
+      },
+      {
+        "filter": "speed 4, skip 0.4",
+        "speed": 4.0,
+        "skip share": 0.4,
+        "filtered": 0.9326
+      },
+      {
+        "filter": "speed 4, skip 0.6",
+        "speed": 4.0,
+        "skip share": 0.6,
+        "filtered": 0.9326
+      },
+      {
+        "filter": "speed 4, skip 0.8",
+        "speed": 4.0,
+        "skip share": 0.8,
+        "filtered": 0.9327
+      },
+      {
+        "filter": "speed 4, skip 0.9",
+        "speed": 4.0,
+        "skip share": 0.9,
+        "filtered": 0.9327
+      },
+      {
+        "filter": "speed 8, skip 0.2",
+        "speed": 8.0,
+        "skip share": 0.2,
+        "filtered": 0.9339
+      },
+      {
+        "filter": "speed 8, skip 0.4",
+        "speed": 8.0,
+        "skip share": 0.4,
+        "filtered": 0.9339
+      },
+      {
+        "filter": "speed 8, skip 0.6",
+        "speed": 8.0,
+        "skip share": 0.6,
+        "filtered": 0.9341
+      },
+      {
+        "filter": "speed 8, skip 0.8",
+        "speed": 8.0,
+        "skip share": 0.8,
+        "filtered": 0.9341
+      },
+      {
+        "filter": "speed 8, skip 0.9",
+        "speed": 8.0,
+        "skip share": 0.9,
+        "filtered": 0.9342
+      }
+    ]
+  },
+  "runtime_seconds": 400
+}
