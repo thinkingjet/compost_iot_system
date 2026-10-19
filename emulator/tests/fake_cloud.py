@@ -132,7 +132,7 @@ class FakeCloud:
                         if not isinstance(body, list):
                             return self._reply(422, {"detail": "expected a list of readings"})
                         cloud.records.extend({"device_id": device_id, **r} for r in body)
-                    if cloud.verbose:
+                    if cloud.verbose and body:
                         print(f"  {len(body)} reading(s) from {device_id}: {body[-1]}")
                     return self._reply(200, body)
 

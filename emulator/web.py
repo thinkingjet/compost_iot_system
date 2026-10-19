@@ -8,7 +8,11 @@ One static page plus a handful of JSON routes:
   GET  /api/status         everything the page shows
   POST /api/pair           {"code": "123456"}
   POST /api/actions/<a>    a = turn | water | feedstock
-  POST /api/batch          {"days_ago": 5}: a fresh batch started then, history sent
+  POST /api/start          {"history_days": 15, "stage": 2, "progress": 40}, any of
+                           them: the starting point (its history is sent the first
+                           time the cloud takes this device's readings)
+  POST /api/batch          {} or {"days_ago": 5}: the starting point's batch now,
+                           begun that many days ago, history sent
   POST /api/uploads        {"paused": true | false}
   POST /api/uploads/retry  skip the current back-off
   POST /api/reset          factory reset (clears pairing only)
@@ -26,6 +30,9 @@ from pathlib import Path
 from device import BackfillError, PairingError
 
 log = logging.getLogger(__name__)
+
+# what POST /api/start can change
+START_FIELDS = ("history_days", "stage", "progress")
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 STATIC_FILES = {
@@ -120,9 +127,17 @@ def make_handler(device):
                     device.apply_action(path.removeprefix("/api/actions/"))
                 except ValueError:
                     return self._error(HTTPStatus.NOT_FOUND, "unknown action")
+            elif path == "/api/start":
+                changes = {name: body[name] for name in START_FIELDS if name in body}
+                if not changes:
+                    return self._error(HTTPStatus.BAD_REQUEST, f"send any of {', '.join(START_FIELDS)}")
+                try:
+                    device.set_start_point(changes)
+                except BackfillError as error:
+                    return self._error(error.status, error.message)
             elif path == "/api/batch":
                 days = body.get("days_ago")
-                if not isinstance(days, int) or isinstance(days, bool):
+                if "days_ago" in body and (not isinstance(days, int) or isinstance(days, bool)):
                     return self._error(HTTPStatus.BAD_REQUEST, "days_ago must be a whole number")
                 try:
                     device.start_batch_in_past(days)

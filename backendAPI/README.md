@@ -167,7 +167,7 @@ Everything else is shared with paired devices: `DELETE /devices/{id}` revokes th
 - **Not enough history.** The model's features look back 24 hours, so with under a day of readings the stage fields are `null` (and `probabilities` is empty), with `history_hours` saying how much there is.
 - **One batch.** The model remembers how hot the pile has been since it started, so more history is better, but readings from a previous batch mislead it. Nothing records when fresh feedstock goes in yet, so the window is the only control.
 - **No model.** Not installed (above): 503. The current model was saved with scikit-learn 1.9, which `pyproject.toml` pins (`>=1.9,<1.10`).
-- **The emulator.** By default it runs the pile 60 times faster than the clock it stamps readings with (`TIME_SCALE`), so a whole batch fits in about 8 hours. The model reads timestamps as real time, so for an emulator bin run it with `TIME_SCALE=1` and use **Start a batch in the past** on its page, which sends a fresh batch's history at real-time spacing ([emulator README](../emulator/README.md#stage-estimates-in-the-cloud)).
+- **The emulator.** The model reads timestamps as real time, and by default the emulator gives it what it needs: 5 days of a batch's history at real-time spacing the first time the cloud takes its readings, then live readings at `TIME_SCALE=1`. Its page's **Starting point** card sets how many days, and the stage and how far through it the batch begins ([emulator README](../emulator/README.md#the-starting-point)). At a `TIME_SCALE` above 1 the live pile runs ahead of its timestamps and the estimate can't follow it for long.
 
 ## Research data API
 

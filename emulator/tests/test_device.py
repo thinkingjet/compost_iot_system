@@ -1,10 +1,11 @@
 import dataclasses
 import json
+import random
 import stat
 import unittest
 from datetime import datetime, timedelta, timezone
 
-from device import BACKFILL_STEP_MINUTES, BackfillError, Device, PairingError
+from device import BACKFILL_STEP_MINUTES, BackfillError, Device, PairingError, pile_at
 from tests.fake_cloud import FakeCloud
 from tests.helpers import make_settings
 
@@ -13,7 +14,9 @@ class DeviceTest(unittest.TestCase):
     def setUp(self):
         self.cloud = FakeCloud().start()
         self.addCleanup(self.cloud.stop)
-        self.settings = make_settings(self.cloud.url)
+        # no history after pairing, so the uplink tests see plain readings;
+        # the history has tests of its own at the bottom
+        self.settings = make_settings(self.cloud.url, backfill_days=0)
         self.device = self.new_device()
 
     def new_device(self, **overrides):
@@ -33,6 +36,11 @@ class DeviceTest(unittest.TestCase):
         device._upload_once()
 
     # ------------------------------------------------------------ pairing ---
+
+    def test_the_device_powers_on_and_off(self):
+        self.device.start()
+        self.device.stop()
+        self.assertEqual(self.device.status()["events"][-1]["text"], "power on")
 
     def test_a_new_device_has_a_fake_mac_and_no_pairing(self):
         uid = self.device.store.device_uid
@@ -246,12 +254,14 @@ class DeviceTest(unittest.TestCase):
         self.send_everything()
         self.assertEqual(len(self.cloud.records), 1 + 145)
 
-    def test_a_batch_in_the_past_starts_from_fresh_feedstock_and_is_looked_after(self):
-        self.device = self.new_device(start_stage=3)
+    def test_a_batch_in_the_past_starts_at_the_starting_point_and_is_looked_after(self):
+        self.device = self.new_device(state_file=self.settings.state_file.with_name("new.json"), start_stage=3)
+        self.assertEqual(self.device.model.stage_id, 3)  # a cooling pile...
+        self.device.set_start_point({"stage": 0, "progress": 0})
         self.set_up_and_sending()
         self.device.start_batch_in_past(12)
         first = self.device.queue[0][1]
-        self.assertLess(first["temperature"], 40)  # fresh feedstock, not the cooling pile it replaced
+        self.assertLess(first["temperature"], 40)  # ...replaced by fresh feedstock, the starting point
         self.assertGreater(self.device.model.waterings, 0)
         moisture = [record["moisture_percent"] for _, record in self.device.queue]
         self.assertGreater(min(moisture), 45)  # watered below 50 %, so it never stalls
@@ -296,6 +306,154 @@ class DeviceTest(unittest.TestCase):
         self.device.start_batch_in_past(4)
         self.assertEqual(self.device.status()["cloud"]["dropped_total"], 0)
 
+
+    # --------------------------------------------------- the starting point ---
+
+    def test_a_pile_can_start_part_way_through_any_stage(self):
+        for stage, progress in ((0, 50), (2, 40), (3, 60), (4, 90)):
+            model = pile_at(random.Random(3), 28.0, stage, progress)
+            self.assertEqual(model.stage_id, stage)
+            self.assertAlmostEqual(model.stage_progress, progress / 100, delta=0.05)
+            self.assertGreater(model.moisture, 45)  # looked after on the way there
+
+    def test_a_pile_that_leaves_a_stage_early_starts_the_next_one(self):
+        # Active Thermophilic ends as soon as the core has held 55 C, so near its end
+        # some piles are already in Peak Decomposition
+        landed = {pile_at(random.Random(seed), 28.0, 1, 95).stage_id for seed in range(40)}
+        self.assertEqual(landed, {1, 2})
+        for seed in range(40):
+            model = pile_at(random.Random(seed), 28.0, 1, 95)
+            if model.stage_id == 2:
+                self.assertLess(model.stage_progress, 0.05)
+
+    def test_a_new_device_starts_its_pile_at_the_starting_point(self):
+        device = self.new_device(state_file=self.settings.state_file.with_name("new.json"),
+                                 start_stage=2, start_progress=50)
+        self.assertEqual(device.model.stage_id, 2)
+        self.assertEqual(device.status()["start"]["stage"], 2)
+
+    def test_the_starting_point_is_checked_and_kept(self):
+        for bad in ({"history_days": 21}, {"history_days": -1}, {"stage": 5}, {"progress": 96},
+                    {"progress": True}, {"stage": "2"}, {"history_days": 2.5}):
+            with self.assertRaises(BackfillError, msg=bad):
+                self.device.set_start_point(bad)
+        self.device.set_start_point({"history_days": 15, "stage": 2, "progress": 40})
+        preview = self.device.status()["start"]["preview"]
+
+        restarted = self.new_device(backfill_days=3, start_stage=0)  # the page's choice wins
+        start = restarted.status()["start"]
+        self.assertEqual((start["history_days"], start["stage"], start["progress"]), (15, 2, 40))
+        self.assertEqual(start["preview"], preview)  # the same batch, not a new one
+
+    def test_a_changed_setting_counts_unless_the_page_set_it(self):
+        self.device.set_start_point({"stage": 2})
+        restarted = self.new_device(backfill_days=7, start_progress=30)
+        start = restarted.status()["start"]
+        self.assertEqual((start["history_days"], start["stage"], start["progress"]), (7, 2, 30))
+
+    def test_too_many_days_from_the_settings_are_cut_to_fit_the_queue(self):
+        device = self.new_device(state_file=self.settings.state_file.with_name("new.json"),
+                                 queue_max=200, backfill_days=10)
+        self.assertEqual(device.status()["start"]["history_days"], 4)
+
+    def test_the_preview_is_the_batch_that_gets_sent(self):
+        self.device.set_start_point({"history_days": 3, "stage": 2, "progress": 40})
+        preview = self.device.status()["start"]["preview"]
+        self.assertEqual((preview["begins"]["stage_name"], preview["begins"]["progress"]), ("Peak Decomposition", 40))
+
+        self.set_up_and_sending()
+        self.device.start_batch_in_past()
+        start = self.device.status()["start"]
+        self.assertEqual(start["last_batch"]["begins"], preview["begins"])
+        self.assertEqual(start["last_batch"]["readings"], 3 * 48 + 1)
+        pile = self.device.status()["pile"]
+        self.assertEqual((pile["stage_id"], round(self.device.model.stage_progress * 100)),
+                         (preview["now"]["stage_id"], preview["now"]["progress"]))
+        self.assertIn("started a batch 3 days ago at 40 % through Peak Decomposition",
+                      self.device.status()["events"][0]["text"])
+
+    def test_with_no_history_the_pile_just_moves_to_the_starting_point(self):
+        self.device.set_start_point({"history_days": 0, "stage": 3, "progress": 50})
+        self.device.start_batch_in_past()  # unpaired: no cloud needed
+        self.assertEqual(self.device.model.stage_id, 3)
+        self.assertIn("pile moved to 50 % through Cooling", self.device.status()["events"][0]["text"])
+
+    # -------------------------------------- the history sent after pairing ---
+
+    def test_the_history_goes_the_first_time_the_cloud_takes_readings(self):
+        self.device = self.new_device(backfill_days=2)
+        self.pair(set_up=False)
+        self.reading_and_upload()
+        status = self.device.status()
+        self.assertEqual((status["cloud"]["state"], status["cloud"]["queued"]), ("awaiting_setup", 0))
+        self.assertTrue(status["start"]["pending"])
+
+        self.cloud.set_up_all()
+        self.device.retry_now()
+        self.reading_and_upload()  # an empty batch: stores nothing, but it's accepted
+        status = self.device.status()
+        self.assertEqual(status["cloud"]["queued"], 2 * 48 + 1)
+        self.assertFalse(status["start"]["pending"])
+        self.assertIn("started a batch 2 days ago", status["events"][0]["text"])
+
+        self.send_everything()
+        stamps = [datetime.fromisoformat(record["timestamp"]) for record in self.cloud.records]
+        # only the history, in order: no live reading from the old pile in front of it
+        self.assertEqual(len(stamps), 2 * 48 + 1)
+        self.assertEqual(stamps, sorted(stamps))
+        self.assertEqual(stamps[-1] - stamps[0], timedelta(days=2))
+
+    def test_the_history_goes_once_per_pairing(self):
+        self.device = self.new_device(backfill_days=1)
+        self.pair()
+        self.reading_and_upload()
+        self.send_everything()
+        self.reading_and_upload()
+        self.assertEqual(len(self.cloud.records), 49 + 1)  # the history, then one live reading
+
+        restarted = self.new_device(backfill_days=1)
+        self.reading_and_upload(restarted)
+        self.assertEqual(len(self.cloud.records), 49 + 2)
+
+        restarted.factory_reset()
+        self.pair(restarted)
+        self.assertTrue(restarted.status()["start"]["pending"])
+
+    def test_a_restart_before_setup_still_sends_the_history(self):
+        self.device = self.new_device(backfill_days=1)
+        self.pair(set_up=False)
+        self.reading_and_upload()
+        restarted = self.new_device(backfill_days=1)
+        self.cloud.set_up_all()
+        self.reading_and_upload(restarted)
+        self.assertEqual(restarted.status()["cloud"]["queued"], 49)
+
+    def test_no_history_means_nothing_is_sent_later_either(self):
+        self.pair()
+        self.reading_and_upload()
+        self.device.set_start_point({"history_days": 5})
+        self.reading_and_upload()
+        self.assertEqual(len(self.cloud.records), 2)  # plain readings; the moment has passed
+
+    def test_a_device_paired_before_there_was_a_history_keeps_its_pile(self):
+        self.pair()
+        saved = json.loads(self.settings.state_file.read_text())
+        del saved["history_pending"]
+        self.settings.state_file.write_text(json.dumps(saved))
+        upgraded = self.new_device(backfill_days=5)
+        self.assertFalse(upgraded.status()["start"]["pending"])
+        self.reading_and_upload(upgraded)
+        self.assertEqual(len(self.cloud.records), 1)
+
+    def test_a_refused_empty_batch_backs_off(self):
+        self.device = self.new_device(backfill_days=1)
+        self.pair()
+        self.cloud.fail_next = [422]
+        self.device._upload_once()
+        status = self.device.status()
+        self.assertEqual(status["cloud"]["state"], "rejected")
+        self.assertGreater(status["cloud"]["retry_in_seconds"], 0)
+        self.assertTrue(status["start"]["pending"])
 
 if __name__ == "__main__":
     unittest.main()

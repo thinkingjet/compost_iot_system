@@ -2,7 +2,8 @@
 The device's flash storage: one small JSON file that survives restarts.
 
 It holds the device's hardware identity, its cloud credentials once it's
-paired, and the state of the pile. On a real ESP32 this would be NVS; here
+paired, the state of the pile, and the starting point set on the device page
+(with whether this pairing's history still has to be sent). On a real ESP32 this would be NVS; here
 it's a file that is written atomically (temp file + rename), so a crash
 mid-write never leaves half a file behind, and readable only by its owner
 because it contains the API key.
@@ -39,6 +40,11 @@ class StateFile:
         self.device_uid = None
         self.credentials = None
         self.model = None
+        # the batch's seed and any of history_days, stage and progress set on
+        # the page (the settings give the rest)
+        self.start = None
+        # paired, but the starting point's history hasn't been sent yet
+        self.history_pending = False
 
     def load(self):
         if not self.path.is_file():
@@ -49,13 +55,18 @@ class StateFile:
             creds = saved.get("credentials")
             self.credentials = Credentials(**creds) if creds else None
             self.model = saved.get("model")
+            self.start = saved.get("start")
+            # missing from files saved before there was a history to send: a
+            # device paired then has sent what it has, so its pile is left alone
+            self.history_pending = bool(saved.get("history_pending", False))
         except (OSError, ValueError, TypeError) as error:
             # a corrupt file is treated like a factory-fresh device, but the
             # old file is kept aside so nothing is silently lost
             broken = self.path.with_suffix(".corrupt")
             log.error("state file %s is unreadable (%s); moved to %s", self.path, error, broken)
             os.replace(self.path, broken)
-            self.device_uid = self.credentials = self.model = None
+            self.device_uid = self.credentials = self.model = self.start = None
+            self.history_pending = False
             return False
         return True
 
@@ -65,6 +76,8 @@ class StateFile:
             "device_uid": self.device_uid,
             "credentials": asdict(self.credentials) if self.credentials else None,
             "model": self.model,
+            "start": self.start,
+            "history_pending": self.history_pending,
         }
         tmp = self.path.with_suffix(".tmp")
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
