@@ -1,0 +1,53 @@
+{
+  "id": "manual-registration",
+  "title": "Registering a device with an API key",
+  "claim": "With no pairing, the owner sets the name and bin first and copies the key onto the device by hand. Only a device added this way can be given a new key; a paired device gets one by pairing again.",
+  "groups": [
+    {"label": "Owner", "cols": [1], "tone": "green"},
+    {"label": "Dashboard", "cols": [2], "tone": "blue"},
+    {"label": "API", "cols": [3], "tone": "teal"},
+    {"label": "Database", "cols": [4], "tone": "amber"}
+  ],
+  "phases": [
+    {"label": "Register", "rows": [1, 2]},
+    {"label": "New key", "rows": [3, 4]}
+  ],
+  "nodes": [
+    {"id": "owner1", "row": 1, "col": 1, "kind": "actor", "title": "Names it, picks a bin"},
+    {"id": "wiz", "row": 1, "col": 2, "title": "Register wizard", "sub": "/devices/register"},
+    {"id": "register", "row": 1, "col": 3, "title": "Register device", "sub": "POST /devices", "desc": "device, bin and key in one go"},
+    {"id": "devices", "row": 1, "col": 4, "kind": "record", "title": "devices", "tag": "table",
+     "fields": ["*registration: 'manual'", "mac: null", "name, owner_id"]},
+    {"id": "owner2", "row": 2, "col": 1, "kind": "actor", "title": "Copies the key onto the device"},
+    {"id": "showkey", "row": 2, "col": 2, "title": "Key shown once", "desc": "never saved by the dashboard"},
+    {"id": "owner3", "row": 3, "col": 1, "kind": "actor", "title": "Asks for a new key"},
+    {"id": "settings", "row": 3, "col": 2, "kind": "decision", "tag": "Settings tab", "title": "Registered with a key?"},
+    {"id": "replace", "row": 3, "col": 3, "kind": "decision", "tag": "POST /devices/{id}/key", "title": "registration is 'manual'?"},
+    {"id": "keys", "row": 3, "col": 4, "kind": "store", "title": "device_apikeys", "desc": "old key revoked, new hash stored"},
+    {"id": "nobutton", "row": 4, "col": 2, "kind": "note", "title": "No button: pair the device again to replace its key."},
+    {"id": "refused", "row": 4, "col": 3, "kind": "note", "title": "409, nothing revoked."}
+  ],
+  "edges": [
+    {"from": "owner1", "to": "wiz", "label": "name, bin", "step": 1},
+    {"from": "wiz", "to": "register", "label": "register", "step": 2},
+    {"from": "register", "to": "devices", "label": "INSERT", "step": 2},
+    {"from": "register", "to": "showkey", "label": "API key", "kind": "data", "step": 3},
+    {"from": "showkey", "to": "owner2", "label": "copy it", "kind": "data", "step": 3},
+    {"from": "owner3", "to": "settings", "label": "New API key", "step": "A", "accent": true},
+    {"from": "settings", "to": "replace", "label": "yes", "step": "A", "accent": true},
+    {"from": "replace", "to": "keys", "label": "yes: replace", "step": "A", "accent": true},
+    {"from": "settings", "to": "nobutton", "label": "no", "kind": "data"},
+    {"from": "replace", "to": "refused", "label": "no", "kind": "data"}
+  ],
+  "steps": [
+    "The owner chooses Register with API key, then gives the device a name and picks or creates a bin.",
+    "In one transaction the API adds the device with `registration = 'manual'` and no MAC, puts it in the bin and issues a key. The database only accepts `manual` when the MAC is empty.",
+    "The key is shown once on the page, with the address to send readings to. The owner copies it onto the device; readings are accepted at once because the bin is already set.",
+    {"id": "A", "text": "A new key is checked three times: the Settings tab only offers the button for a `manual` device, the API refuses anything else with 409, and the database column the API checks is tied to the device having no MAC. A new key revokes the old one straight away."}
+  ],
+  "notes": [
+    "The two ways in are kept separate on purpose. Pairing proves the device holds the code; registration trusts the owner to put the key where it belongs.",
+    "The emulator cannot take a key by hand, so this path is tested with `emulator/tools/compostiq_test_device.py`."
+  ],
+  "legend": {"accent": "a new key: three checks", "data": "shown or refused"}
+}

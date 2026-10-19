@@ -1,0 +1,253 @@
+{
+  "id": "readings-flow",
+  "title": "Readings in, charts, stage and alerts out",
+  "claim": "A batch of readings and the alerts it triggers are saved together or not at all. The dashboard reads them back per bin, only from the signed-in owner's bins, as charts, a stage estimate and alerts with suggested steps.",
+  "groups": [
+    {
+      "label": "Device",
+      "cols": [
+        1
+      ],
+      "tone": "violet"
+    },
+    {
+      "label": "API: in",
+      "cols": [
+        2
+      ],
+      "tone": "teal"
+    },
+    {
+      "label": "Database",
+      "cols": [
+        3
+      ],
+      "tone": "amber"
+    },
+    {
+      "label": "API: out",
+      "cols": [
+        4
+      ],
+      "tone": "teal"
+    },
+    {
+      "label": "Dashboard",
+      "cols": [
+        5
+      ],
+      "tone": "blue"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "device",
+      "row": 1,
+      "col": 1,
+      "title": "Device",
+      "sub": "x-key header",
+      "desc": "a reading every 30 s, sent in batches"
+    },
+    {
+      "id": "accept",
+      "row": 1,
+      "col": 2,
+      "title": "Accept readings",
+      "sub": "POST /records",
+      "desc": "409 if it has no bin yet"
+    },
+    {
+      "id": "rules",
+      "row": 3,
+      "col": 2,
+      "title": "Check alert rules",
+      "sub": "record_alerts",
+      "desc": "heat, moisture, oxygen, CO₂"
+    },
+    {
+      "id": "records",
+      "row": 1,
+      "col": 3,
+      "kind": "store",
+      "title": "records",
+      "desc": "one row per reading, per bin"
+    },
+    {
+      "id": "events",
+      "row": 3,
+      "col": 3,
+      "kind": "store",
+      "title": "bin_events",
+      "desc": "incidents, open or resolved"
+    },
+    {
+      "id": "seen",
+      "row": 2,
+      "col": 3,
+      "kind": "store",
+      "title": "devices",
+      "sub": "last_seen_at"
+    },
+    {
+      "id": "binreads",
+      "row": 1,
+      "col": 4,
+      "title": "Bin readings",
+      "sub": "GET /bins/{id}/records",
+      "desc": "and daily /history"
+    },
+    {
+      "id": "alerts",
+      "row": 3,
+      "col": 4,
+      "title": "Alerts",
+      "sub": "GET /alerts",
+      "desc": "adds offline: silent 10 min"
+    },
+    {
+      "id": "charts",
+      "row": 1,
+      "col": 5,
+      "title": "Bin charts",
+      "desc": "last 6 h, 24 h or 7 days"
+    },
+    {
+      "id": "cards",
+      "row": 3,
+      "col": 5,
+      "title": "Alert cards",
+      "desc": "overview and bin pages"
+    },
+    {
+      "id": "maint",
+      "row": 4,
+      "col": 5,
+      "title": "Maintenance tab",
+      "sub": "MAINTENANCE_STEPS",
+      "desc": "3 steps per alert type"
+    },
+    {
+      "id": "stage",
+      "row": 2,
+      "col": 4,
+      "title": "Stage estimate",
+      "sub": "GET /bins/{id}/stage",
+      "desc": "the ml/ model, 60 days"
+    },
+    {
+      "id": "stagecard",
+      "row": 2,
+      "col": 5,
+      "title": "Stage card",
+      "desc": "Live tab, \"Model estimate\""
+    }
+  ],
+  "edges": [
+    {
+      "from": "device",
+      "to": "accept",
+      "label": "readings",
+      "step": 1,
+      "accent": true
+    },
+    {
+      "from": "accept",
+      "to": "seen",
+      "label": "contact time",
+      "step": 2
+    },
+    {
+      "from": "accept",
+      "to": "rules",
+      "label": "new readings",
+      "step": 3,
+      "accent": true
+    },
+    {
+      "from": "rules",
+      "to": "events",
+      "label": "open / resolve",
+      "step": 3,
+      "accent": true
+    },
+    {
+      "from": "accept",
+      "to": "records",
+      "label": "INSERT",
+      "step": 4,
+      "accent": true
+    },
+    {
+      "from": "charts",
+      "to": "binreads",
+      "label": "bin, hours",
+      "step": 5
+    },
+    {
+      "from": "binreads",
+      "to": "records",
+      "label": "own bin only",
+      "step": 5
+    },
+    {
+      "from": "binreads",
+      "to": "charts",
+      "label": "[Reading]",
+      "kind": "data"
+    },
+    {
+      "from": "stagecard",
+      "to": "stage",
+      "label": "bin",
+      "step": 6
+    },
+    {
+      "from": "stage",
+      "to": "records",
+      "label": "30-min averages",
+      "step": 6
+    },
+    {
+      "from": "cards",
+      "to": "alerts",
+      "label": "every 60 s",
+      "step": 7
+    },
+    {
+      "from": "alerts",
+      "to": "events",
+      "label": "open incidents",
+      "step": 7
+    },
+    {
+      "from": "alerts",
+      "to": "seen",
+      "label": "who is silent",
+      "step": 7
+    },
+    {
+      "from": "maint",
+      "to": "alerts",
+      "label": "this bin's alerts",
+      "step": 8
+    }
+  ],
+  "steps": [
+    "The device takes a reading every 30 seconds and sends what it has queued, up to 50 at a time, to `POST /records` with its key in the `x-key` header.",
+    "The API looks the key up by its hash. In a transaction of its own it notes the time of contact on the device, so that is kept even when the upload is then refused with 409.",
+    "If the device is in a bin, each new reading is checked against five rules: above 70 °C, moisture below 30 % or above 70 %, oxygen below 1 %, CO₂ above 12 %. A rule newly broken opens an incident; one back in range resolves it.",
+    "In the same transaction the readings are saved, each tagged with its device and bin. If anything fails, the alerts and the readings are rolled back together.",
+    "The dashboard's server asks for a bin's readings (or, on a device's page, `GET /devices/{id}/records`). The API first checks that the bin belongs to the signed-in owner; someone else's bin is answered with 404.",
+    "The bin's Live tab asks for a stage estimate. The API averages the bin's last 60 days of core temperature and moisture onto a 30-minute grid and runs the stage model from `ml/`. With less than a day of readings it gives no stage.",
+    "Alert cards show the open incidents plus an `offline` alert for any device in a bin that has not been heard from for 10 minutes. Offline alerts are worked out on each request and never stored. Only the overview page refreshes its cards, every 60 seconds.",
+    "A bin's Maintenance tab loads that bin's open alerts and shows three suggested steps for each alert type. The steps are written into the dashboard (`MAINTENANCE_STEPS` in `pages.py`), taken from composting guides, and the API holds none of them."
+  ],
+  "notes": [
+    "Every owner-facing read is scoped to the owner in SQL, by `bins.user_id` or `devices.owner_id`.",
+    "There is no ammonia rule: the sensor gives a relative level, not a concentration.",
+    "Offline means 10 minutes in both the alerts and the device cards, but the rules differ: a card looks at the last contact only, while the alert also counts from pairing and covers only devices in a bin. A newly registered device shows Offline at once but raises no alert for 10 minutes."
+  ],
+  "legend": {
+    "accent": "saved together, or not at all"
+  }
+}

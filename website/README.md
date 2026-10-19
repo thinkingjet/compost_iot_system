@@ -44,8 +44,9 @@ The stat tiles, the two 30-day charts and the country list on `/` and
 the API can't be reached, the script shows the snapshot in
 `public/assets/preview.json` and the pages say they are preview figures. That
 snapshot and the files in `public/downloads/` are the simulated pilot data
-(`mock-data/`), anonymised. Once the API has a bulk export, point the download
-links at it.
+(`mock-data/`), anonymised. The pages no longer link the files: research data
+comes from the research API (`/research/*`, with a researcher's key), which
+also answers in CSV with `format=csv`.
 
 The charts are drawn by `site.js` as SVG, in about 70 lines, so the page loads
 no chart library. (Plotly, which the dashboard uses, is 1.5 MB gzipped.)

@@ -1,0 +1,40 @@
+{
+  "title": "CompostIQ architecture",
+  "intro": "How the parts of CompostIQ fit together, how a compost device joins an account and how its readings flow, what owners and researchers each get to see, and how the production VM is laid out and kept running. Every box and arrow is checked against the code on main at 4e51a31 (19 October 2026).",
+  "sections": [
+    {
+      "title": "The system",
+      "intro": "The parts, the one rule between them, and what the database holds.",
+      "specs": [
+        "specs/system-overview.json",
+        "specs/data-model.json"
+      ]
+    },
+    {
+      "title": "Devices and data",
+      "intro": "The two ways a device joins an owner's account, the round trip its readings make, and the composting stages the readings follow.",
+      "specs": [
+        "specs/pairing.json",
+        "specs/manual-registration.json",
+        "specs/readings-flow.json",
+        "specs/compost-stages.json"
+      ]
+    },
+    {
+      "title": "Owners and researchers",
+      "intro": "Two account types on one platform, and what each sees of the same data.",
+      "specs": [
+        "specs/roles-journeys.json",
+        "specs/data-views.json"
+      ]
+    },
+    {
+      "title": "The VM",
+      "intro": "One Ubuntu VM, three public sites, two app processes kept alive by PM2.",
+      "specs": [
+        "specs/vm-overview.json",
+        "specs/vm-reliability.json"
+      ]
+    }
+  ]
+}

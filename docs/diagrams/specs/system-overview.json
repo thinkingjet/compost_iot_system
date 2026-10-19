@@ -1,0 +1,198 @@
+{
+  "id": "system-overview",
+  "title": "CompostIQ at a glance",
+  "claim": "Only the API touches the database. The dashboard, the devices and researchers' own scripts all go through it, each with its own kind of credential.",
+  "lanes": [
+    {
+      "id": "people",
+      "label": "People",
+      "tone": "green"
+    },
+    {
+      "id": "clients",
+      "label": "Clients",
+      "sub": "what people and devices use",
+      "tone": "blue"
+    },
+    {
+      "id": "api",
+      "label": "API",
+      "sub": "backendAPI/",
+      "tone": "teal"
+    },
+    {
+      "id": "data",
+      "label": "Data",
+      "sub": "database/, ml/",
+      "tone": "amber"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "visitor",
+      "lane": "people",
+      "col": 1,
+      "kind": "actor",
+      "title": "Website visitor"
+    },
+    {
+      "id": "user",
+      "lane": "people",
+      "col": 2,
+      "kind": "actor",
+      "title": "Owner or researcher"
+    },
+    {
+      "id": "script",
+      "lane": "people",
+      "col": 3,
+      "kind": "actor",
+      "title": "Researcher's script"
+    },
+    {
+      "id": "dev",
+      "lane": "people",
+      "col": 5,
+      "kind": "actor",
+      "title": "Developer"
+    },
+    {
+      "id": "website",
+      "lane": "clients",
+      "col": 1,
+      "title": "Website",
+      "sub": "website/",
+      "desc": "static pages, compostiq.win"
+    },
+    {
+      "id": "dashboard",
+      "lane": "clients",
+      "col": 2,
+      "title": "Dashboard",
+      "sub": "monitoringSystem/",
+      "desc": "Dash, pages built on its server"
+    },
+    {
+      "id": "device",
+      "lane": "clients",
+      "col": 4,
+      "title": "Compost device",
+      "sub": "emulator/",
+      "desc": "a reading every 30 s"
+    },
+    {
+      "id": "sim",
+      "lane": "clients",
+      "col": 5,
+      "title": "Simulator",
+      "sub": "simulator/",
+      "desc": "whole cycles, uploaded at once"
+    },
+    {
+      "id": "api",
+      "lane": "api",
+      "col": 1,
+      "span": 5,
+      "kind": "record",
+      "title": "API",
+      "tag": "FastAPI",
+      "fields": [
+        "/auth/* // sign-up, sign-in, own account",
+        "/bins, /devices, /alerts, /pairing/codes // owner's token",
+        "/research/* // research key or researcher token",
+        "/records // device key in x-key",
+        "/pairing/redeem // one-time 6-digit code"
+      ]
+    },
+    {
+      "id": "db",
+      "lane": "data",
+      "col": 3,
+      "kind": "store",
+      "title": "PostgreSQL",
+      "desc": "users, bins, devices, readings, alerts"
+    },
+    {
+      "id": "model",
+      "lane": "data",
+      "col": 5,
+      "kind": "store",
+      "title": "Stage model",
+      "sub": "ml/models/",
+      "desc": "loaded when the API starts"
+    }
+  ],
+  "edges": [
+    {
+      "from": "user",
+      "to": "dashboard",
+      "label": "signs in",
+      "step": 1
+    },
+    {
+      "from": "dashboard",
+      "to": "api",
+      "label": "user token",
+      "step": 1
+    },
+    {
+      "from": "device",
+      "to": "api",
+      "label": "x-key",
+      "step": 2
+    },
+    {
+      "from": "dev",
+      "to": "sim",
+      "label": "makes a cycle",
+      "step": 3
+    },
+    {
+      "from": "sim",
+      "to": "api",
+      "label": "x-key",
+      "step": 3
+    },
+    {
+      "from": "script",
+      "to": "api",
+      "label": "x-research-key",
+      "step": 4
+    },
+    {
+      "from": "visitor",
+      "to": "website",
+      "label": "reads",
+      "step": 5
+    },
+    {
+      "from": "api",
+      "to": "db",
+      "label": "SQL",
+      "step": 6,
+      "accent": true
+    },
+    {
+      "from": "api",
+      "to": "model",
+      "label": "stage estimate",
+      "step": 7
+    }
+  ],
+  "steps": [
+    "Owners and researchers use the dashboard. It calls the API from its own server with the user's token, so the browser never sees the token or talks to the API.",
+    "A compost device sends batches of readings with its own key. It gets that key by pairing with a 6-digit code, or the owner registers it and copies the key over by hand. `emulator/` plays the device in demos.",
+    "The simulator generates a whole composting cycle on a developer's machine and can upload it to `/records` with a device key.",
+    "Researchers' own scripts read per-country aggregates with a research key created on the dashboard.",
+    "The public website is plain HTML pages, served straight from the repo.",
+    "Only the API has the database password. Every rule about who may see or change what is checked there, next to the data.",
+    "To estimate a bin's composting stage, the API runs the stage model trained in `ml/` on the bin's temperature and moisture readings."
+  ],
+  "notes": [
+    "In production, devices, scripts and the website reach the API through NGINX on one VM, and the dashboard calls it over the VM's loopback address. The production VM diagram shows how.",
+    "Three credentials never stand in for each other: a device key only sends readings, a user token only works for its account type, and a research key only reads research data."
+  ],
+  "legend": {
+    "accent": "the only way to the data"
+  }
+}

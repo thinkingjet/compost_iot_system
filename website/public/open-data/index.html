@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Open compost data for research · CompostIQ</title>
-<meta name="description" content="Anonymised hourly readings from working compost bins, labelled by composting phase. Free to use, no sign-up.">
+<meta name="description" content="Compost readings summed up per country, by day or over a period, for researchers with a free account and API key.">
 <link rel="canonical" href="https://compostiq.win/open-data/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="CompostIQ">
 <meta property="og:title" content="Open compost data for research · CompostIQ">
-<meta property="og:description" content="Anonymised hourly readings from working compost bins, labelled by composting phase. Free to use, no sign-up.">
+<meta property="og:description" content="Compost readings summed up per country, by day or over a period, for researchers with a free account and API key.">
 <meta property="og:url" content="https://compostiq.win/open-data/">
 <meta name="theme-color" content="#3D6B09">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
@@ -46,32 +46,32 @@
 <div class="wrap hero__grid">
 <div class="hero__copy">
 <span class="eyebrow">Open data for research</span>
-<h1 class="display-1">Real compost piles, measured every hour.</h1>
-<p class="lead">Anonymised readings from working compost bins: temperature, moisture, oxygen, CO₂ and ammonia, each labelled with its composting phase. Free to use. No account or key needed.</p>
+<h1 class="display-1">Compost piles, country by country.</h1>
+<p class="lead">Readings from working compost bins, summed up per country for each day or for a whole period: temperature, moisture, oxygen, CO₂ and ammonia, with how often each alert happens. Free for research with a researcher account and an API key.</p>
 <div class="cluster hero__actions">
 <a class="btn btn--primary" href="/docs/">Get started</a>
 <a class="btn btn--ghost" href="/docs/api/">API reference</a>
-<a class="btn btn--ghost" href="/downloads/compostiq-readings.csv" download><svg class="icon icon--sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><path d="M7 11l5 5l5-5"/><path d="M12 4l0 12"/></svg>Download CSV</a>
+<a class="btn btn--ghost" href="https://dashboard.compostiq.win/register">Get an API key</a>
 </div>
 </div>
 <div class="terminal">
 <div class="terminal__head"><span>Terminal</span><span class="tag tag--on-dark">200 OK</span></div>
-<pre class="code"><span class="t-p">$</span> curl "https://api.compostiq.win/research/readings?method=takakura&amp;limit=1"
+<pre class="code"><span class="t-p">$</span> curl -H "x-research-key: $COMPOSTIQ_KEY" \
+    "https://api.compostiq.win/research/overview?country_code=ID"
 
 {
-  <span class="t-k">"items"</span>: [{
-    <span class="t-k">"bin_ref"</span>: <span class="t-s">"b_1d0ca7"</span>,
-    <span class="t-k">"country"</span>: <span class="t-s">"ID"</span>,
-    <span class="t-k">"method"</span>: <span class="t-s">"takakura"</span>,
-    <span class="t-k">"recorded_at"</span>: <span class="t-s">"2026-08-26T00:00:00Z"</span>,
-    <span class="t-k">"temperature_c"</span>: <span class="t-n">61.58</span>,
-    <span class="t-k">"moisture_pct"</span>: <span class="t-n">52.46</span>,
-    <span class="t-k">"oxygen_pct"</span>: <span class="t-n">3.26</span>,
-    <span class="t-k">"co2_pct"</span>: <span class="t-n">8.61</span>,
-    <span class="t-k">"nh3_relative"</span>: <span class="t-n">0.889</span>,
-    <span class="t-k">"stage_name"</span>: <span class="t-s">"Peak Decomposition"</span>
-  }],
-  <span class="t-k">"next_cursor"</span>: <span class="t-s">"eyJ0IjoiMjAyNi0wOC0yNlQwMTowMFoifQ"</span>
+  <span class="t-k">"start"</span>: <span class="t-s">"2026-09-19T08:00:00+00:00"</span>,
+  <span class="t-k">"end"</span>: <span class="t-s">"2026-10-19T08:00:00+00:00"</span>,
+  <span class="t-k">"country_code"</span>: <span class="t-s">"ID"</span>,
+  <span class="t-k">"data"</span>: [{
+    <span class="t-k">"country_code"</span>: <span class="t-s">"ID"</span>,
+    <span class="t-k">"bin_count"</span>: <span class="t-n">3</span>,
+    <span class="t-k">"reading_count"</span>: <span class="t-n">25920</span>,
+    <span class="t-k">"temperature_c"</span>: <span class="t-n">47.92</span>,
+    <span class="t-k">"temperature_c_max"</span>: <span class="t-n">64.311</span>,
+    <span class="t-k">"moisture_percent"</span>: <span class="t-n">53.274</span>,
+    <span class="t-c">…</span>
+  }]
 }</pre>
 </div>
 </div>
@@ -88,7 +88,7 @@
 </div>
 <div class="note-row">
 <p data-figures-note>Figures come from the CompostIQ API.</p>
-<p>Bulk files (simulated preview data for now): <a href="/downloads/compostiq-readings.csv" download>CSV, 57.1 KB</a> · <a href="/downloads/compostiq-readings.json" download>JSON, 157.5 KB</a> · <a href="/docs/api/#changelog">Changelog</a></p>
+<p>Every research endpoint also answers in CSV: add <code class="ic">format=csv</code>. · <a href="/docs/api/#changelog">Changelog</a></p>
 </div>
 </div>
 </section>
@@ -97,27 +97,38 @@
 <div class="wrap stack stack--md">
 <div class="split">
 <div class="split__main stack">
-<span class="eyebrow">What's in a reading</span>
-<h2 class="display-2">One row per bin, per hour.</h2>
+<span class="eyebrow">What's in a row</span>
+<h2 class="display-2">One row per country, per day.</h2>
 </div>
-<p class="split__aside split__aside--narrow text-2">Readings from a bin's sensors are averaged into hourly rows. The API and the bulk files return the same fields.</p>
+<p class="split__aside split__aside--narrow text-2">Readings from every bin in a country are summed up for each UTC day (<code class="ic">/research/daily</code>) or for the whole period you ask for (<code class="ic">/research/overview</code>). JSON and CSV carry the same fields.</p>
 </div>
 <div class="tbl-box">
 <table class="tbl tbl--wide">
 <thead><tr><th scope="col">Field</th><th scope="col">Type · unit</th><th scope="col">What it means</th></tr></thead>
 <tbody>
-<tr><td><code>bin_ref</code></td><td>string</td><td>A random reference for one bin. Stable across the dataset, never linked to an account.</td></tr>
-<tr><td><code>country</code></td><td>ISO 3166-1 alpha-2</td><td>Where the bin is, at country level only. For example <code>ID</code>.</td></tr>
-<tr><td><code>method</code></td><td>enum</td><td><code>takakura</code>, <code>bokashi</code> or <code>aerated_static_pile</code>.</td></tr>
-<tr><td><code>recorded_at</code></td><td>ISO 8601 · UTC</td><td>Start of the hour the row covers.</td></tr>
-<tr><td><code>temperature_c</code></td><td>number · °C</td><td>Core temperature of the pile.</td></tr>
-<tr><td><code>moisture_pct</code></td><td>number · %</td><td>Moisture content. <code>null</code> when the probe dropped out.</td></tr>
-<tr><td><code>oxygen_pct</code></td><td>number · %</td><td>Oxygen in the pile, 0 to 21.</td></tr>
-<tr><td><code>co2_pct</code></td><td>number · %</td><td>Carbon dioxide in the pile.</td></tr>
-<tr><td><code>nh3_relative</code></td><td>number · 0–1</td><td>Relative ammonia intensity. Not a ppm value.</td></tr>
-<tr><td><code>mq135_composite_ppm</code></td><td>number · ppm</td><td>Raw MQ-135 gas sensor response. A composite signal, not clean CO₂.</td></tr>
-<tr><td><code>stage_id</code>, <code>stage_name</code></td><td>0–4 · string</td><td>The composting phase the rule engine assigned to this hour.</td></tr>
-<tr><td><code>faults</code></td><td>array of codes</td><td>Conditions flagged in this hour, for example <code>ANAEROBIC_RISK</code> or <code>MOISTURE_LOW</code>. In the CSV they are joined with <code>;</code>.</td></tr>
+<tr><td><code>country_code</code></td><td>ISO 3166-1 alpha-2</td><td>Where the bins are, at country level only. For example <code>ID</code>.</td></tr>
+<tr><td><code>day</code></td><td>ISO 8601 · UTC</td><td>The UTC day the row covers. Daily rows only.</td></tr>
+<tr><td><code>bin_count</code></td><td>integer</td><td>How many bins sent readings.</td></tr>
+<tr><td><code>reading_count</code></td><td>integer</td><td>How many readings the row sums up.</td></tr>
+<tr><td><code>temperature_c</code></td><td>number · °C</td><td>Average core temperature of the piles.</td></tr>
+<tr><td><code>moisture_percent</code></td><td>number · %</td><td>Average moisture content.</td></tr>
+<tr><td><code>o2_percent</code></td><td>number · %</td><td>Average oxygen in the piles, 0 to 21.</td></tr>
+<tr><td><code>co2_percent</code></td><td>number · %</td><td>Average carbon dioxide in the piles.</td></tr>
+<tr><td><code>nh3_ratio</code></td><td>number · 0–1</td><td>Average relative ammonia intensity. Not a ppm value.</td></tr>
+<tr><td><code>…_min</code>, <code>…_max</code>, <code>…_sd</code></td><td>number</td><td>For each sensor above: its lowest and highest reading, and the standard deviation. Every figure is rounded to 3 decimals.</td></tr>
+</tbody>
+</table>
+</div>
+<p class="text-2"><code class="ic">/research/alerts</code> has one row per country and alert type instead:</p>
+<div class="tbl-box">
+<table class="tbl tbl--wide">
+<thead><tr><th scope="col">Field</th><th scope="col">Type · unit</th><th scope="col">What it means</th></tr></thead>
+<tbody>
+<tr><td><code>country_code</code></td><td>ISO 3166-1 alpha-2</td><td>Where the bins are.</td></tr>
+<tr><td><code>type</code></td><td>enum</td><td><code>too_hot</code>, <code>too_dry</code>, <code>too_wet</code>, <code>low_oxygen</code> or <code>high_co2</code>.</td></tr>
+<tr><td><code>alert_count</code></td><td>integer</td><td>How many alerts of this type were raised in the window.</td></tr>
+<tr><td><code>bin_count</code></td><td>integer</td><td>How many bins raised them.</td></tr>
+<tr><td><code>avg_hours_to_resolve</code></td><td>number · hours</td><td>How long they took to clear, on average. Alerts still open are left out of it.</td></tr>
 </tbody>
 </table>
 </div>
@@ -145,16 +156,16 @@
 <span><span class="tag tag--warn">Coarsened</span></span>
 <ul class="plain-list">
 <li>Location becomes a country code</li>
-<li>Time becomes hourly averages, in UTC</li>
-<li>Several sensors in one bin become one row</li>
+<li>Time becomes UTC days, or the whole period you ask for</li>
+<li>Every bin in a country becomes one row</li>
 </ul>
 </div>
 <div class="card card--pad stack stack--sm">
-<span><span class="tag tag--good">Replaced</span></span>
+<span><span class="tag tag--good">Left out</span></span>
 <ul class="plain-list">
-<li>Each bin gets a random <code class="ic">bin_ref</code></li>
-<li>The reference can't be turned back into an account or address</li>
-<li>Deleted accounts disappear from the next snapshot</li>
+<li>Bins with no country set</li>
+<li>Offline alerts, which are never stored</li>
+<li>A deleted account's bins, at once: every request reads the live data</li>
 </ul>
 </div>
 </div>
@@ -168,10 +179,10 @@
 <h2 class="display-2">Read this before you publish.</h2>
 </div>
 <div class="tiles tiles--sm">
-<div class="caveat"><h3>MQ-135 is not a CO₂ meter</h3><p>It reacts to ammonia, CO₂ and other gases at once, and drifts from unit to unit. Treat <code>mq135_composite_ppm</code> as a composite signal.</p></div>
-<div class="caveat"><h3>Ammonia is relative</h3><p><code>nh3_relative</code> runs from 0 to 1. It shows when ammonia rises and falls, not how much is present.</p></div>
+<div class="caveat"><h3>Averages hide spread</h3><p>Every sensor comes with its minimum, maximum and standard deviation (<code>_min</code>, <code>_max</code>, <code>_sd</code>). Check them before comparing averages.</p></div>
+<div class="caveat"><h3>Ammonia is relative</h3><p><code>nh3_ratio</code> runs from 0 to 1. It shows when ammonia rises and falls, not how much is present.</p></div>
 <div class="caveat"><h3>A tropical baseline</h3><p>The pilot site sits at 24–32 °C ambient, so piles start near 28 °C and cool back to it. Expect higher floors than temperate data.</p></div>
-<div class="caveat"><h3>Phases are rule-based</h3><p>Stage labels come from temperature bands plus the 24-hour trend, not lab analysis. Use them as a guide, not ground truth.</p></div>
+<div class="caveat"><h3>Days are UTC</h3><p>Daily rows follow UTC days. The pilot site is at UTC+8, so one local day spans two rows.</p></div>
 </div>
 </div>
 </section>
@@ -181,19 +192,19 @@
 <div class="split">
 <div class="split__main stack">
 <span class="eyebrow">Phase definitions</span>
-<h2 class="display-2">The ranges behind every stage label.</h2>
+<h2 class="display-2">The ranges behind each stage.</h2>
 </div>
-<p class="split__aside split__aside--narrow text-2">Also returned by <code class="ic">GET /research/stages</code>, so your code can use the same numbers we do.</p>
+<p class="split__aside split__aside--narrow text-2">The ranges CompostIQ's simulated piles follow (<code class="ic">simulator/composting_stages.py</code>). Peak decomposition starts once the core has held 55 °C for 6 hours.</p>
 </div>
 <div class="tbl-box">
 <table class="tbl tbl--wide">
 <thead><tr><th scope="col">Stage</th><th scope="col">Temperature</th><th scope="col">Moisture</th><th scope="col">Oxygen</th><th scope="col">CO₂</th><th scope="col">Typical length</th></tr></thead>
 <tbody>
-<tr><td class="tbl__key"><span class="mono dim">0</span>  Early mesophilic</td><td>28–45 °C</td><td>60–65 %</td><td>8–15 %</td><td>0.5–3 %</td><td>1–3 days</td></tr>
-<tr><td class="tbl__key"><span class="mono dim">1</span>  Active thermophilic</td><td>45–60 °C</td><td>55–60 %</td><td>5–8 %</td><td>3–6 %</td><td>2–4 days</td></tr>
-<tr><td class="tbl__key"><span class="mono dim">2</span>  Peak decomposition</td><td>57–65 °C</td><td>50–58 %</td><td>2–5 %</td><td>6–10 %</td><td>4–7 days</td></tr>
-<tr><td class="tbl__key"><span class="mono dim">3</span>  Cooling</td><td>30–60 °C</td><td>45–55 %</td><td>5–12 %</td><td>2–6 %</td><td>5–10 days</td></tr>
-<tr><td class="tbl__key"><span class="mono dim">4</span>  Maturation</td><td>28–32 °C</td><td>40–50 %</td><td>12–20 %</td><td>0.5–2 %</td><td>24–36 days</td></tr>
+<tr><td class="tbl__key"><span class="mono dim">0</span>  Early mesophilic</td><td>28–45 °C</td><td>60–65 %</td><td>15.5–21 %</td><td>0.5–5.5 %</td><td>1–3 days</td></tr>
+<tr><td class="tbl__key"><span class="mono dim">1</span>  Active thermophilic</td><td>45–60 °C</td><td>55–60 %</td><td>12–17.5 %</td><td>3.5–9 %</td><td>2–4 days</td></tr>
+<tr><td class="tbl__key"><span class="mono dim">2</span>  Peak decomposition</td><td>55–65 °C</td><td>50–58 %</td><td>10–16.5 %</td><td>4.5–11 %</td><td>4–7 days</td></tr>
+<tr><td class="tbl__key"><span class="mono dim">3</span>  Cooling</td><td>30–60 °C</td><td>45–55 %</td><td>11–20 %</td><td>1–10 %</td><td>5–10 days</td></tr>
+<tr><td class="tbl__key"><span class="mono dim">4</span>  Maturation</td><td>28–32 °C</td><td>40–50 %</td><td>19–21 %</td><td>0.3–2 %</td><td>24–36 days</td></tr>
 </tbody>
 </table>
 </div>
@@ -212,7 +223,7 @@
 <div class="panel-green">
 <div class="stack stack--sm">
 <h2 class="display-3">Ready for your first request?</h2>
-<p>The quickstart takes about five minutes and ends with the data in a pandas DataFrame.</p>
+<p>The quickstart takes about five minutes: get a key, then load a country's daily figures into a pandas DataFrame.</p>
 </div>
 <div class="cluster">
 <a class="btn btn--light" href="/docs/">Open the quickstart</a>
@@ -240,7 +251,7 @@
 <nav class="footer-col" aria-label="Research">
 <span class="footer-col__title">Research</span>
 <a href="/open-data/">Open data</a>
-<a href="/open-data/#downloads">Download CSV</a>
+<a href="https://dashboard.compostiq.win/register">Get an API key</a>
 </nav>
 <nav class="footer-col" aria-label="Docs">
 <span class="footer-col__title">Docs</span>

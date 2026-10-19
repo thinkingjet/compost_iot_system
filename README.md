@@ -2,7 +2,7 @@
 
 **An IoT system that monitors compost bins and tells people what to do next.**
 
-Sensors inside a compost bin report temperature, moisture and gas levels to the cloud. A web dashboard turns those readings into something useful: which phase the compost is in, whether it is healthy, and when to turn it, water it or leave it alone.
+Sensors inside a compost bin report temperature, moisture, oxygen, carbon dioxide and ammonia to the cloud. Owners follow their bins on a web dashboard: live charts, a 30-day history, an estimate of which composting stage each bin is in, and alerts that come with steps for putting things right. Researchers get their own accounts and API keys, and read per-country figures drawn from every bin, with no names, places or IDs.
 
 CompostIQ is an RMIT capstone project, built around a pilot site in Mataram, Indonesia.
 
@@ -13,9 +13,10 @@ CompostIQ is an RMIT capstone project, built around a pilot site in Mataram, Ind
 - [The systems](#the-systems)
 - [How it works](#how-it-works)
 - [Security model](#security-model)
+- [Who sees what](#who-sees-what)
 - [Data model](#data-model)
-- [The composting cycle](#the-composting-cycle)
-- [Project status](#project-status)
+- [The composting cycle and alerts](#the-composting-cycle-and-alerts)
+- [Deployment](#deployment)
 - [Getting started](#getting-started)
 - [Repository layout](#repository-layout)
 - [Documentation](#documentation)
@@ -24,219 +25,172 @@ CompostIQ is an RMIT capstone project, built around a pilot site in Mataram, Ind
 
 | For | CompostIQ provides |
 |---|---|
-| **People who compost** | A dashboard for their own bins and devices: live readings, history, and alerts that say what action to take |
-| **The public** | An open landing page. Anonymised, country-level statistics are planned |
-| **Researchers and developers** | A simulator that produces realistic composting cycles, so the whole system can be built and tested without a physical bin |
+| **Compost owners** | A dashboard for their own bins and devices. Pair a device with a 6-digit code or register it with an API key, follow live and 30-day charts, see which composting stage each bin is in, get alerts with suggested fixes, and remove a device when it is retired |
+| **Researchers** | A separate account type with up to five API keys, and per-country aggregates of the readings and alerts from every bin with a country, by day or over a period, as JSON or CSV. An Explore data page shows the same figures in the browser |
+| **The public** | A website at `compostiq.win` with country-level totals, an open-data page for researchers, and API docs |
+| **Developers** | An emulator that behaves like a real device, and a simulator that generates whole composting cycles, so the system can be built and tested without a physical bin |
 
 ## Architecture
 
-CompostIQ is four systems with one rule between them: **only the API touches the database.** The dashboard and the devices both go through it.
+The rule that shapes the design: **only the API touches the database.** The dashboard, the devices and researchers' own scripts all go through it, and each uses its own kind of credential.
 
-```mermaid
-flowchart TB
-    person(["Visitor or signed-in user"])
-    device["Compost device<br/>sensors in the bin"]
-    sim["Simulator<br/>stands in for a device"]
+![CompostIQ at a glance: people, the clients they use, the API and the database](docs/diagrams/system-overview.svg)
 
-    subgraph vm["Cloud VM"]
-        nginx["NGINX<br/>HTTPS and rate limiting"]
-        dash["Dashboard<br/>Dash + Mantine"]
-        api["API<br/>FastAPI"]
-        db[("PostgreSQL")]
-    end
+Four ideas follow from that rule:
 
-    person -->|browser| nginx
-    device -->|readings| nginx
-    sim -->|readings| nginx
-    nginx -->|dashboard.compostiq.win| dash
-    nginx -->|api.compostiq.win| api
-    dash -->|"calls made by the server"| api
-    api -->|SQL| db
+1. **The API is the single gatekeeper.** Every rule about who may see or change what is checked in one place, next to the data, using the account type stored in the database.
+2. **The browser never talks to the API for the dashboard.** The dashboard's server makes the calls, so a user's token never reaches browser JavaScript.
+3. **Three credentials that cannot stand in for each other.** A device key only sends readings, a user token only works for its account type, and a research key only reads research data.
+4. **The emulator is just a device.** It pairs and uploads through the same endpoints, with the same kind of key, that a physical device would use, so nothing in the cloud is emulator-specific.
 
-    classDef client fill:#e7f5ff,stroke:#1c7ed6,color:#0b2a4a
-    classDef app fill:#ebfbee,stroke:#2f9e44,color:#0b3d17
-    classDef store fill:#fff4e6,stroke:#e8590c,color:#4a1f04
-    classDef edge fill:#f1f3f5,stroke:#495057,color:#212529
-    class person,device,sim client
-    class dash,api app
-    class db store
-    class nginx edge
-```
-
-Three ideas shape this design:
-
-1. **The API is the single gatekeeper.** Every rule about who may see or change what is enforced in one place, next to the data.
-2. **The browser never talks to the API.** The dashboard's server makes the calls, so a user's credentials never reach browser JavaScript.
-3. **The simulator is just another device.** It uses the same endpoint and the same kind of key as real hardware, so nothing in the cloud is simulator-specific.
+All ten diagrams, with numbered steps and notes, are in [`docs/diagrams`](docs/diagrams/README.md).
 
 ## The systems
 
 | System | What it does | Built with | Folder |
 |---|---|---|---|
-| **API** | Receives readings from devices, manages user accounts, and is the only path to the database | FastAPI, SQLAlchemy Core, PyJWT, argon2 | [`backendAPI/`](backendAPI/README.md) |
-| **Dashboard** | The website. Public landing page, sign-up and sign-in, and each user's bins, devices and charts | Dash, dash-mantine-components, Plotly | [`monitoringSystem/`](monitoringSystem/README.md) |
-| **Simulator** | Generates a full composting cycle of sensor readings and sends it to the API as a device would. Runs on a developer's own machine | Dash, pandas, Plotly | [`simulator/`](simulator/README.md) |
-| **Database** | Stores users, bins, devices, readings and alerts. Schema changes are versioned as migrations | PostgreSQL 16 | [`database/`](database/README.md) |
-| **Deployment** | Runs the API and dashboard on one VM behind HTTPS | NGINX, PM2, Let's Encrypt | [`deploy/`](deploy/pm2/README.md) |
+| **API** | Receives readings, runs the alert rules, estimates each bin's composting stage, manages accounts, pairing, bins and devices, and serves research data. The only path to the database | FastAPI, SQLAlchemy Core, PyJWT, pwdlib (argon2) | [`backendAPI/`](backendAPI/README.md) |
+| **Dashboard** | Sign-up and sign-in, then separate pages for owners (bins, devices, alerts) and researchers (API keys, Explore data, docs) | Dash, dash-mantine-components, Plotly | [`monitoringSystem/`](monitoringSystem/README.md) |
+| **Website** | The public site: landing page, open data, quickstart, API reference and security pages | Plain HTML, CSS and JavaScript | [`website/`](website/README.md) |
+| **Emulator** | One emulated device with its own web page. It pairs with a dashboard code, models a live compost pile and uploads a reading every 30 seconds | Python standard library, Docker | [`emulator/`](emulator/README.md) |
+| **Simulator** | Generates a whole composting cycle on a developer's machine, charts it, and can upload it to the API | Dash, pandas, Plotly | [`simulator/`](simulator/README.md) |
+| **Stage model** | A gradient-boosting classifier, trained on simulated cycles, that estimates a bin's composting stage from its temperature and moisture. The API loads it at start | scikit-learn, pandas | [`ml/`](ml/README.md) |
+| **Database** | 11 tables. Schema changes are versioned as migrations `002` to `006` | PostgreSQL 16 | [`database/`](database/README.md) |
+| **Deployment** | Runs the API and dashboard on one VM behind HTTPS, and serves the website | NGINX, PM2, Let's Encrypt | [`deploy/`](deploy/pm2/README.md) |
 
 ## How it works
 
+### Adding a device
+
+The owner gets a 6-digit code from the dashboard and types it into the device's own web page. The device swaps the code for its API key directly with the API, so the key never passes through the dashboard. The device's readings are refused (409) until the owner confirms the hardware ID and gives the device a name and a bin.
+
+![Pairing a device: owner, dashboard, API and device, from code to first reading](docs/diagrams/pairing.svg)
+
+A device can also be added without pairing. The owner chooses **Register with API key**, gives a name and a bin, and copies the key, shown once, onto the device. Only a device added this way can be given a new key later; a paired device gets one by pairing again. See [Registering a device with an API key](docs/diagrams/README.md#registering-a-device-with-an-api-key).
+
 ### A reading's journey
 
-A device collects readings and sends them in batches. The API works out which bin the device is assigned to and stores each reading against it.
+A device takes a reading every 30 seconds and uploads them in batches to `POST /records` with its key. The API checks the readings against the alert rules and saves the readings and any alerts in one transaction, so either both are stored or neither is. The dashboard reads them back per bin, and only from the signed-in owner's bins.
 
-```mermaid
-sequenceDiagram
-    participant D as Device or simulator
-    participant A as API
-    participant P as PostgreSQL
+![Readings in, charts, stage and alerts out](docs/diagrams/readings-flow.svg)
 
-    D->>A: POST /records (batch of readings + device key)
-    A->>P: Is this key valid and not revoked?
-    P-->>A: Yes, it belongs to device X
-    A->>P: Which bin is device X assigned to?
-    P-->>A: Bin Y
-    A->>P: Store the readings against bin Y
-    A-->>D: 200 OK
-```
+Each reading holds a timestamp, temperature, moisture, oxygen, carbon dioxide and a relative ammonia level (0 to 1). A bin's **Maintenance** tab turns each open alert into three suggested steps.
 
-Each reading holds a timestamp, temperature, moisture, oxygen, carbon dioxide and a relative ammonia level.
+### Estimating the composting stage
 
-### Signing in
+A bin's **Live** tab opens with the composting stage the API estimates from the bin's readings (`GET /bins/{id}/stage`). The API averages the last 60 days of core temperature and moisture onto a 30-minute grid and runs the stage model from [`ml/`](ml/README.md) on them. The model needs a day of readings, and a forward-only filter keeps the stage from flickering back. The dashboard shows the result as a model estimate, with its confidence.
 
-Users sign in on the dashboard. The API issues a token, and the dashboard keeps it in a signed cookie that browser scripts cannot read.
+### Signing in and account types
 
-```mermaid
-sequenceDiagram
-    actor U as User
-    participant D as Dashboard
-    participant A as API
-    participant P as PostgreSQL
+Everyone signs up on the same page and chooses **Compost owner** or **Researcher** once. The API issues a token valid for 8 hours. The dashboard keeps it in a signed, HttpOnly session cookie that browser scripts cannot read, and checks the account type on every private page. When the token expires the user signs in again and returns to the page they were on.
 
-    U->>D: Email and password
-    D->>A: POST /auth/login
-    A->>P: Find the user, check the password hash
-    A-->>D: Token, valid for 8 hours
-    D-->>U: Signed session cookie
+![Owners and researchers: one sign-up, separate pages, checked by the API on every request](docs/diagrams/roles-journeys.svg)
 
-    Note over U,P: Every page after that
-    U->>D: Open a private page (cookie attached)
-    D->>A: Request with the user's token
-    A->>P: Fetch only this user's data
-    A-->>D: Data
-    D-->>U: Page
-```
-
-When the token expires the user is asked to sign in again, then returned to the page they were on.
+The dashboard's separate pages are a convenience. The real control is in the API: `require_role` reads the account type from the database on every request and refuses the wrong type with 403.
 
 ## Security model
 
-There are two kinds of caller, with separate credentials that cannot stand in for each other.
+| Caller | Credential | Stored as | Allowed to |
+|---|---|---|---|
+| **Device** | API key in the `x-key` header | SHA-256 hash, revocable | Send readings. Nothing else |
+| **Device being paired** | 6-digit code, typed in by the owner | Valid 10 minutes, used once | Swap the code for its API key, once |
+| **Owner** | Token (JWT), valid 8 hours | Not stored | Manage their own account, bins, devices and alerts |
+| **Researcher** | Token (JWT), valid 8 hours | Not stored | Manage their own account and research keys, and read research data in the dashboard |
+| **Researcher's script** | Research key in the `x-research-key` header | SHA-256 hash; deleting it revokes it | Read research data |
 
-| Caller | Credential | Allowed to |
-|---|---|---|
-| **Device** | An API key, stored only as a hash | Send readings. Nothing else |
-| **User** | A token (JWT) issued at sign-in, valid for 8 hours | Manage their own account, bins and devices |
-
-- Passwords are stored as argon2 hashes.
-- Ownership is checked in the database query itself, so a user can only ever reach their own data.
+- Passwords are stored as argon2id hashes.
+- Ownership is checked in the database query itself, so an owner can only ever reach their own data. Someone else's bin is answered as if it did not exist (404).
+- The sign-in token carries only the user's id and its expiry. The account type is read from the database on every request, and a research key works only while its account is a researcher's.
 - The dashboard holds no database credentials. In production it is not even given the database address.
-- Public pages are designed to show totals only, at country level: no names, locations or device identifiers.
+- NGINX allows 10 requests a minute per address to `/auth/` and `/pairing/`. The API also refuses pairing from an address that has entered 10 wrong codes in 15 minutes.
+
+## Who sees what
+
+The same database reaches each audience through its own filter.
+
+![One database, two views: owner and researcher](docs/diagrams/data-views.svg)
+
+- **Owners** see every detail of their own bins: exact readings per device, alerts and a daily history.
+- **Researchers** get one row per country, for each UTC day (Daily) or for the whole chosen period (Overall), up to 366 days. Each row has bin and reading counts and the average, minimum, maximum and standard deviation of each sensor; Alerts gives counts and the average hours to resolve. Names, emails, locations, MACs and database IDs are never selected, and bins without a country are left out.
+- **The public** sees totals only, on the website: how many bins, countries and active devices, bins per country, and 30 days of daily average temperature and moisture.
 
 ## Data model
 
-A user owns bins and devices. A device is assigned to a bin, and its readings are stored against that bin.
+A user owns bins and devices. A device is placed in a bin through an assignment that keeps its history, and every reading is stored against both the bin it was taken in and the device that sent it.
 
-```mermaid
-erDiagram
-    USERS ||--o{ BINS : owns
-    USERS ||--o{ DEVICES : owns
-    BINS ||--o{ DEVICE_BIN_ASSN : hosts
-    DEVICES ||--o{ DEVICE_BIN_ASSN : "is placed by"
-    DEVICES ||--o{ DEVICE_APIKEYS : "signs in with"
-    BINS ||--o{ RECORDS : collects
-    BINS ||--o{ BIN_EVENTS : raises
-```
+![The data model: users, bins, devices, assignments, readings, alerts and keys](docs/diagrams/data-model.svg)
 
 | Table | Holds |
 |---|---|
-| `users` | Accounts |
-| `bins` | Compost bins, each owned by one user |
-| `devices` | Sensor devices, each owned by one user once paired |
+| `users` | Accounts, with their account type (`owner` or `researcher`) |
+| `bins` | Compost bins, each owned by one user, with an optional country |
+| `devices` | Sensor devices, each owned by one user once paired or registered |
 | `device_bin_assn` | Which device is in which bin, and when |
 | `device_apikeys` | Hashed device keys, which can be revoked |
-| `records` | Sensor readings. Each also remembers which device sent it |
-| `bin_events` | Alerts raised for a bin |
-
-Two smaller tables are left off the diagram: `setup_codes` (pairing codes) and `device_maintenance`.
+| `setup_codes` | Pairing codes, and which device redeemed each one |
+| `pairing_failures` | Wrong pairing codes per address, for the rate limit |
+| `records` | Sensor readings, each with its bin and the device that sent it |
+| `bin_events` | Alerts raised for a bin, open or resolved |
+| `research_apikeys` | Researchers' hashed API keys |
+| `device_maintenance` | Reserved for a device maintenance schedule; the code does not use it |
 
 - **Assignments keep their history.** Moving a device closes one assignment and opens another, so old readings stay with the bin they were taken in.
-- **Deleting an account** removes its bins and readings, and releases its devices to be paired again.
+- **Deleting an account** removes its bins, readings, alerts, pairing codes and research keys, and releases its devices so they can be paired again.
 
-## The composting cycle
+## The composting cycle and alerts
 
-Compost passes through five stages, each with its own expected temperature. CompostIQ uses these ranges to work out which stage a bin is in and whether its readings are healthy. The simulator uses the same ranges to generate data.
+Compost passes through five stages, each with its own expected readings. The simulator and the emulator generate their readings from these ranges, and the stage model was trained on cycles generated from them.
 
-```mermaid
-flowchart LR
-    s0["Early mesophilic<br/>28 to 45 °C<br/>about 2 days"]
-    s1["Active thermophilic<br/>45 to 55 °C<br/>about 3 days"]
-    s2["Peak decomposition<br/>held at 55 °C or above<br/>about 5 days"]
-    s3["Cooling<br/>60 down to 30 °C<br/>about 8 days"]
-    s4["Maturation<br/>28 to 32 °C<br/>about 30 days"]
-    s0 --> s1 --> s2 --> s3 --> s4
+![The composting cycle: five stages with their temperature, moisture, oxygen, CO₂ and length](docs/diagrams/compost-stages.svg)
 
-    classDef warm fill:#fff9db,stroke:#f08c00,color:#4a3300
-    classDef hot fill:#ffe8cc,stroke:#e8590c,color:#4a1f04
-    classDef peak fill:#ffe3e3,stroke:#e03131,color:#4a0b0b
-    classDef mature fill:#ebfbee,stroke:#2f9e44,color:#0b3d17
-    class s0,s3 warm
-    class s1 hot
-    class s2 peak
-    class s4 mature
-```
+One milestone matters most: holding **55 °C or above for three days in a row** kills pathogens, which is the EPA Class A sanitation target. Peak decomposition is that stretch: it starts once the core has held 55 °C for 6 hours, and a bin that never gets that hot, like a small Takakura basket, goes straight from active thermophilic to cooling. The dashboard draws the 55 °C line on a bin's history chart. The ranges and their sources are in [`simulator/composting_stages.py`](simulator/composting_stages.py).
 
-One milestone matters most: holding **55 °C or above for three days in a row** kills pathogens, which is the EPA Class A sanitation target. Peak decomposition is that stretch: it starts once the core has held 55 °C for 6 hours, and a bin that never gets that hot, like a small Takakura basket, goes straight from active thermophilic to cooling.
+Alerts use fixed limits, set in [`backendAPI/routers/alerts.py`](backendAPI/routers/alerts.py):
 
-The ranges and their sources are in [`simulator/composting_stages.py`](simulator/composting_stages.py).
+| Alert | Raised when | Priority |
+|---|---|---|
+| `too_hot` | Temperature above 70 °C | High |
+| `low_oxygen` | Oxygen below 1 % | High |
+| `too_dry` | Moisture below 30 % | Medium |
+| `too_wet` | Moisture above 70 % | Medium |
+| `high_co2` | Carbon dioxide above 12 % | Medium |
+| `offline` | A device in a bin has not been heard from for 10 minutes | Medium |
 
-## Project status
+An alert opens when a new reading breaks its rule and resolves when a reading is back in range. Offline alerts are worked out on each request and never stored. There is no ammonia rule.
 
-The project is in active development. This is what exists today.
+## Deployment
 
-| Area | Status |
-|---|---|
-| Devices sending readings to the API | ✅ Working |
-| Simulator generating cycles and uploading them | ✅ Working, using a manually issued device key |
-| User accounts: sign-up, sign-in, account page | ✅ Working |
-| Dashboard pages for bins, devices and charts | 🟡 Interface built, showing placeholder data |
-| Deployment to the VM | 🟡 Configured; sign-in release not yet deployed |
-| API for a user's bins, devices and readings | ⬜ Designed |
-| Pairing a device with a 6-digit code | ⬜ Designed |
-| Alerts and health scoring | ⬜ Designed |
-| Public statistics and country map | ⬜ Designed |
+One Ubuntu VM serves three sites under one certificate: the website at `compostiq.win`, the dashboard at `dashboard.compostiq.win` and the API at `api.compostiq.win`. Only NGINX answers web traffic. The dashboard, the API and PostgreSQL listen on the VM's loopback address, and PM2 restarts the two apps after a crash, a memory overrun or a reboot.
 
-The agreed design for everything marked "Designed" is in [`docs/storyboard.md`](docs/storyboard.md).
+![The production VM: NGINX, PM2, the dashboard, the API and PostgreSQL](docs/diagrams/vm-overview.svg)
+
+How PM2 recovers, and when a person is needed, is in [How PM2 keeps the apps up](docs/diagrams/README.md#how-pm2-keeps-the-apps-up). The setup steps are in [`deploy/pm2/README.md`](deploy/pm2/README.md) and [`deploy/nginx/README.md`](deploy/nginx/README.md).
 
 ## Getting started
 
 You need [Docker](https://docs.docker.com/get-docker/) and [uv](https://docs.astral.sh/uv/). Run each command from the repository root.
 
-> **Docker is only used for the local database.** It gives development and testing a PostgreSQL to run against. The API, dashboard and simulator run directly with Python, and the production VM does not use Docker.
+> **Docker is only used locally**, for the development database and, if you like, the emulator. The API, dashboard, website and simulator run directly with Python, and the production VM does not use Docker.
 
-**1. Start the database.** The first start loads the schema, the migrations and a development user.
+**1. Set the local database password.** Compose reads it from a `.env` file in the repository root, and `backendAPI/.env.example` expects `compostiq_dev`.
+
+```bash
+printf 'POSTGRES_PASSWORD=compostiq_dev\n' >> .env
+```
+
+**2. Start the database.** The first start loads the schema, the migrations and a development user.
 
 ```bash
 docker compose up -d
 ```
 
-**2. Install the dependencies.**
+**3. Install the dependencies.**
 
 ```bash
 uv sync --all-packages
 ```
 
-**3. Create the local settings files**, then set the secrets inside them. Each file explains how.
+**4. Create the local settings files**, then set `JWT_SECRET` and `DASHBOARD_SECRET_KEY` inside them. Each file explains how to generate a value.
 
 ```bash
 cp backendAPI/.env.example backendAPI/.env
@@ -246,50 +200,84 @@ cp backendAPI/.env.example backendAPI/.env
 cp monitoringSystem/.env.example monitoringSystem/.env
 ```
 
-**4. Start the API**, in its own terminal.
+**5. Start the API**, in its own terminal.
 
 ```bash
 uv run --directory backendAPI uvicorn main:app --port 8000
 ```
 
-**5. Start the dashboard**, in another terminal.
+**6. Start the website**, in another terminal. The dashboard's `/` and Log out go here.
+
+```bash
+uv run python -m http.server 8070 --bind 127.0.0.1 --directory website/public
+```
+
+**7. Start the dashboard**, in a third terminal.
 
 ```bash
 uv run python monitoringSystem/app.py
 ```
 
-Open <http://127.0.0.1:8050> and create an account.
+Open <http://127.0.0.1:8050/register> and create an account, or sign in at `/login` as the development user described in [`backendAPI/README.md`](backendAPI/README.md). The development data has no researcher and its bin has no country, so the research pages stay empty until a bin with a country has readings.
 
-To check that everything is wired up, run the API's tests:
+**8. Add a device (optional).** Run the emulator in Docker and point it at your API by setting `CLOUD_API_URL=http://host.docker.internal:8000` in `emulator/.env`. Without that line it talks to the production cloud.
+
+```bash
+cp emulator/.env.example emulator/.env
+```
+
+```bash
+docker compose -f emulator/compose.yaml up -d --build
+```
+
+Open the device's page at <http://127.0.0.1:8080>, then in the dashboard choose **Pair a device** → **Get pairing code** and type the code into the device's page. [`emulator/README.md`](emulator/README.md) has the details, a second device and a fake cloud for working offline.
+
+**Tests.** The API's tests need the database from step 2; without it they are skipped.
 
 ```bash
 uv run --directory backendAPI pytest
 ```
 
-The simulator is optional and also uses port 8050, so stop the dashboard first or see its [README](simulator/README.md).
+The emulator's tests need nothing else running.
+
+```bash
+python3 -m unittest discover -s emulator/tests -t emulator
+```
+
+The simulator is optional and runs on port 8051 (`uv run python simulator/app.py`). To upload a cycle, register a device with an API key in the dashboard, then set `API_URL=http://127.0.0.1:8000` and `SIMULATOR_API_KEY` to that key in `simulator/.env` (copy `simulator/.env.example`). See its [README](simulator/README.md).
 
 ## Repository layout
 
 ```text
 compost_iot_system/
-├── backendAPI/          The API, and its tests
-├── monitoringSystem/    The dashboard
-├── simulator/           The device simulator
-├── database/            Schema, migrations and the development seed
-├── deploy/              NGINX and PM2 configuration for the VM
-├── docs/                Storyboards and design decisions
-├── mock-data/           Sample readings and the schema they follow
-├── Archive/             The original prototype, kept for reference
-└── compose.yaml         The local development database
+├── backendAPI/                    The API, and its tests
+├── monitoringSystem/              The dashboard
+├── website/                       The public website (static files)
+├── emulator/                      The emulated device, its tests and a test-device tool
+├── simulator/                     The composting-cycle simulator
+├── ml/                            The stage model: training data, training code and the exported model
+├── database/                      Schema, migrations, development seed and checks
+├── deploy/                        NGINX and PM2 configuration for the VM
+├── docs/                          The storyboard, and the architecture diagrams with their specs
+├── slides/                        The project overview deck
+├── mock-data/                     Sample readings and the schema they follow
+├── Archive/                       The original prototype, kept for reference
+├── mock-api-schema.openapi.json   The August draft of the research API, used only by Archive/
+├── compose.yaml                   The local development database
+├── pyproject.toml, uv.lock        The Python workspace and its locked dependencies
+└── .env.example                   Settings for the VM, which PM2 shares out to each app
 ```
 
 ## Documentation
 
 | To learn about | Read |
 |---|---|
+| How the parts fit together, in ten diagrams with numbered steps | [`docs/diagrams/README.md`](docs/diagrams/README.md) |
 | Endpoints, authentication and running the API | [`backendAPI/README.md`](backendAPI/README.md) |
 | Pages, sign-in and the structure of the dashboard | [`monitoringSystem/README.md`](monitoringSystem/README.md) |
+| Running the emulated device, pairing it and its API contract | [`emulator/README.md`](emulator/README.md) |
 | Generating and inspecting composting cycles | [`simulator/README.md`](simulator/README.md) |
+| Training and using the stage model | [`ml/README.md`](ml/README.md) |
+| The public website and how it is published | [`website/README.md`](website/README.md) |
 | The schema, and how to apply a migration safely | [`database/README.md`](database/README.md) |
 | Setting up the VM | [`deploy/pm2/README.md`](deploy/pm2/README.md), [`deploy/nginx/README.md`](deploy/nginx/README.md) |
-| User flows, page inventory and design decisions | [`docs/storyboard.md`](docs/storyboard.md) |

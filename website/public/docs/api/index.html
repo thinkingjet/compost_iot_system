@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>List readings · CompostIQ API reference</title>
-<meta name="description" content="GET /research/readings: anonymised compost readings, one row per bin per hour, with filters and cursor paging.">
+<title>Daily figures · CompostIQ API reference</title>
+<meta name="description" content="GET /research/daily: compost readings summed up per country and UTC day, for researchers with an API key.">
 <link rel="canonical" href="https://compostiq.win/docs/api/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="CompostIQ">
-<meta property="og:title" content="List readings · CompostIQ API reference">
-<meta property="og:description" content="GET /research/readings: anonymised compost readings, one row per bin per hour, with filters and cursor paging.">
+<meta property="og:title" content="Daily figures · CompostIQ API reference">
+<meta property="og:description" content="GET /research/daily: compost readings summed up per country and UTC day, for researchers with an API key.">
 <meta property="og:url" content="https://compostiq.win/docs/api/">
 <meta name="theme-color" content="#3D6B09">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
@@ -54,7 +54,7 @@
 <h2>Get started</h2>
 <a href="/docs/">Quickstart</a>
 <a href="/open-data/#fields">Data dictionary</a>
-<a href="/docs/api/#errors">Rate limits &amp; errors</a>
+<a href="/docs/api/#auth">Keys &amp; errors</a>
 </div>
 <div>
 <h2>Public statistics</h2>
@@ -64,9 +64,10 @@
 </div>
 <div>
 <h2>Research data</h2>
-<a href="/docs/api/" aria-current="page"><span class="verb">GET</span>/research/readings</a>
-<a href="/docs/api/#research-bins"><span class="verb">GET</span>/research/bins</a>
-<a href="/docs/api/#research-stages"><span class="verb">GET</span>/research/stages</a>
+<a href="/docs/api/" aria-current="page"><span class="verb">GET</span>/research/daily</a>
+<a href="/docs/api/#research-overview"><span class="verb">GET</span>/research/overview</a>
+<a href="/docs/api/#research-alerts"><span class="verb">GET</span>/research/alerts</a>
+<a href="/docs/api/#research-countries"><span class="verb">GET</span>/research/countries</a>
 </div>
 <div>
 <h2>Devices &amp; accounts</h2>
@@ -74,7 +75,6 @@
 </div>
 <div>
 <h2>Resources</h2>
-<a href="/open-data/#downloads">Bulk downloads</a>
 <a href="https://api.compostiq.win/openapi.json">OpenAPI spec (JSON)</a>
 <a href="/docs/api/#changelog">Changelog</a>
 </div>
@@ -83,48 +83,50 @@
 <main id="main" class="docs-main prose docs-main--api">
 <div class="docs-head">
 <nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a><span aria-hidden="true">/</span><span>API reference</span><span aria-hidden="true">/</span><span aria-current="page">Research data</span></nav>
-<h1 class="docs-title">List readings</h1>
-<div class="cluster"><span class="method">GET</span><span class="endpoint-url">https://api.compostiq.win/research/readings</span></div>
-<p class="docs-lead">Anonymised readings, one row per bin per hour, oldest first. Filter by country, method, phase or time, and page through the results with a cursor.</p>
-<div class="cluster"><span class="tag tag--good">No key needed</span><span class="tag tag--neutral">60 requests / minute</span><span class="tag tag--neutral">Up to 5000 rows per page</span></div>
+<h1 class="docs-title">Daily figures</h1>
+<div class="cluster"><span class="method">GET</span><span class="endpoint-url">https://api.compostiq.win/research/daily</span></div>
+<p class="docs-lead">One row per country per UTC day: how many bins and readings it covers, and the average, minimum, maximum and standard deviation of each sensor.</p>
+<div class="cluster"><span class="tag tag--neutral">Research key</span><span class="tag tag--neutral">Up to 366 days</span><span class="tag tag--neutral">JSON or CSV</span></div>
 </div>
 
 <div class="api-cols">
 <div class="api-cols__text">
+<section id="auth">
+<h2>Authentication</h2>
+<p class="small">Send your research key in the <code>x-research-key</code> header. Create one on the <a href="https://dashboard.compostiq.win/research">API keys page</a> of a researcher account; you can hold up to five. A key is shown once, and deleting it stops it working at once.</p>
+</section>
+
 <section id="params">
 <h2>Query parameters</h2>
-<p class="small">All optional. Combine as many as you like.</p>
+<p class="small">All optional.</p>
 <div class="defs">
-<div class="def"><span class="def__k"><code>country</code><span class="def__type">string</span></span><span class="def__v">ISO 3166-1 alpha-2 code, for example <code>ID</code>.</span></div>
-<div class="def"><span class="def__k"><code>method</code><span class="def__type">enum</span></span><span class="def__v"><code>takakura</code>, <code>bokashi</code> or <code>aerated_static_pile</code>.</span></div>
-<div class="def"><span class="def__k"><code>stage</code><span class="def__type">integer 0–4</span></span><span class="def__v">Only hours labelled with this phase. See the <a href="/open-data/#stages">phase definitions</a>.</span></div>
-<div class="def"><span class="def__k"><code>bin_ref</code><span class="def__type">string</span></span><span class="def__v">One bin's readings. References come from <code>/research/bins</code>.</span></div>
-<div class="def"><span class="def__k"><code>from</code><span class="def__type">date-time</span></span><span class="def__v">Earliest hour to include, UTC. Inclusive.</span></div>
-<div class="def"><span class="def__k"><code>to</code><span class="def__type">date-time</span></span><span class="def__v">Latest hour to include, UTC. Exclusive.</span></div>
-<div class="def"><span class="def__k"><code>limit</code><span class="def__type">integer</span></span><span class="def__v">Rows per page. Default <code>500</code>, maximum <code>5000</code>.</span></div>
-<div class="def"><span class="def__k"><code>cursor</code><span class="def__type">string</span></span><span class="def__v">The <code>next_cursor</code> from the previous page.</span></div>
+<div class="def"><span class="def__k"><code>start</code><span class="def__type">date-time</span></span><span class="def__v">Earliest reading to include, inclusive. Must include a timezone, for example <code>2026-09-01T00:00:00Z</code>. Defaults to 30 days before <code>end</code>.</span></div>
+<div class="def"><span class="def__k"><code>end</code><span class="def__type">date-time</span></span><span class="def__v">Latest reading to include, exclusive. Must include a timezone. Defaults to now.</span></div>
+<div class="def"><span class="def__k"><code>country_code</code><span class="def__type">string</span></span><span class="def__v">ISO 3166-1 alpha-2 code, for example <code>ID</code>. Upper or lower case.</span></div>
+<div class="def"><span class="def__k"><code>format</code><span class="def__type">enum</span></span><span class="def__v"><code>json</code> (the default) or <code>csv</code>.</span></div>
 </div>
+<p class="small">The window from <code>start</code> to <code>end</code> can be up to 366 days long.</p>
 </section>
 
 <section id="response">
 <h2>Response</h2>
 <div class="defs">
-<div class="def"><span class="def__k"><code>items</code><span class="def__type">array</span></span><span class="def__v">Readings. Each field is described in the <a href="/open-data/#fields">data dictionary</a>.</span></div>
-<div class="def"><span class="def__k"><code>next_cursor</code><span class="def__type">string | null</span></span><span class="def__v">Pass this as <code>cursor</code> to get the next page. <code>null</code> on the last page.</span></div>
+<div class="def"><span class="def__k"><code>start</code>, <code>end</code><span class="def__type">date-time</span></span><span class="def__v">The window the figures cover.</span></div>
+<div class="def"><span class="def__k"><code>country_code</code><span class="def__type">string | null</span></span><span class="def__v">The country you asked for, or <code>null</code> for every country.</span></div>
+<div class="def"><span class="def__k"><code>data</code><span class="def__type">array</span></span><span class="def__v">One row per country per day, ordered by country, then day. Each field is described in the <a href="/open-data/#fields">data dictionary</a>.</span></div>
 </div>
+<p class="small">With <code>format=csv</code> the response is just the rows, with a header line.</p>
 </section>
 
 <section id="errors" class="stack">
-<h2>Rate limits &amp; errors</h2>
-<p class="small">Every client IP can make 60 requests a minute. Errors share one shape: <code>{"detail": "A sentence you can show to a person."}</code></p>
+<h2>Errors</h2>
+<p class="small">Errors come back as JSON with a <code>detail</code> field.</p>
 <div class="tbl-box">
 <table class="tbl">
 <thead><tr><th scope="col">Status</th><th scope="col">When</th></tr></thead>
 <tbody>
-<tr><td class="tbl__key mono">400</td><td>A parameter isn't recognised, for example <code>method=compost</code>.</td></tr>
-<tr><td class="tbl__key mono">422</td><td>A value is out of range, for example <code>limit=9000</code>.</td></tr>
-<tr><td class="tbl__key mono">429</td><td>Over 60 requests in a minute. Wait for the number of seconds in <code>Retry-After</code>.</td></tr>
-<tr><td class="tbl__key mono">503</td><td>Down for maintenance. Try again shortly, or use the bulk files.</td></tr>
+<tr><td class="tbl__key mono">401</td><td>No <code>x-research-key</code> header, or the key is wrong, deleted, or belongs to an account that isn't a researcher's.</td></tr>
+<tr><td class="tbl__key mono">422</td><td><code>start</code> or <code>end</code> has no timezone, <code>start</code> isn't before <code>end</code>, the window is longer than 366 days, or <code>country_code</code> or <code>format</code> isn't a value listed above.</td></tr>
 </tbody>
 </table>
 </div>
@@ -141,60 +143,63 @@
 </div>
 <button type="button" class="copy" data-copy hidden>Copy</button>
 </div>
-<pre class="code" data-panel="curl">curl -G https://api.compostiq.win/research/readings \
-  -d method=takakura \
-  -d from=2026-08-26T00:00:00Z \
-  -d limit=2</pre>
-<pre class="code" data-panel="python" hidden><span class="t-kw">import</span> requests
+<pre class="code" data-panel="curl">curl -G https://api.compostiq.win/research/daily \
+  -H "x-research-key: $COMPOSTIQ_KEY" \
+  -d country_code=ID \
+  -d start=2026-10-01T00:00:00Z \
+  -d end=2026-10-03T00:00:00Z</pre>
+<pre class="code" data-panel="python" hidden><span class="t-kw">import</span> os
+<span class="t-kw">import</span> requests
 
 resp = requests.get(
-    <span class="t-s">"https://api.compostiq.win/research/readings"</span>,
+    <span class="t-s">"https://api.compostiq.win/research/daily"</span>,
+    headers={<span class="t-s">"x-research-key"</span>: os.environ[<span class="t-s">"COMPOSTIQ_KEY"</span>]},
     params={
-        <span class="t-s">"method"</span>: <span class="t-s">"takakura"</span>,
-        <span class="t-s">"from"</span>: <span class="t-s">"2026-08-26T00:00:00Z"</span>,
-        <span class="t-s">"limit"</span>: <span class="t-n">2</span>,
+        <span class="t-s">"country_code"</span>: <span class="t-s">"ID"</span>,
+        <span class="t-s">"start"</span>: <span class="t-s">"2026-10-01T00:00:00Z"</span>,
+        <span class="t-s">"end"</span>: <span class="t-s">"2026-10-03T00:00:00Z"</span>,
     },
     timeout=<span class="t-n">30</span>,
 )
 resp.raise_for_status()
-<span class="t-kw">for</span> row <span class="t-kw">in</span> resp.json()[<span class="t-s">"items"</span>]:
-    print(row[<span class="t-s">"recorded_at"</span>], row[<span class="t-s">"temperature_c"</span>])</pre>
+<span class="t-kw">for</span> row <span class="t-kw">in</span> resp.json()[<span class="t-s">"data"</span>]:
+    print(row[<span class="t-s">"day"</span>], row[<span class="t-s">"temperature_c"</span>])</pre>
 <pre class="code" data-panel="r" hidden><span class="t-kw">library</span>(httr2)
 
-resp &lt;- request(<span class="t-s">"https://api.compostiq.win/research/readings"</span>) |&gt;
+resp &lt;- request(<span class="t-s">"https://api.compostiq.win/research/daily"</span>) |&gt;
+  req_headers(<span class="t-s">"x-research-key"</span> = Sys.getenv(<span class="t-s">"COMPOSTIQ_KEY"</span>)) |&gt;
   req_url_query(
-    method = <span class="t-s">"takakura"</span>,
-    from = <span class="t-s">"2026-08-26T00:00:00Z"</span>,
-    limit = <span class="t-n">2</span>
+    country_code = <span class="t-s">"ID"</span>,
+    start = <span class="t-s">"2026-10-01T00:00:00Z"</span>,
+    end = <span class="t-s">"2026-10-03T00:00:00Z"</span>
   ) |&gt;
   req_perform()
 
-readings &lt;- resp_body_json(resp, simplifyVector = <span class="t-kw">TRUE</span>)$items
-head(readings[, c(<span class="t-s">"recorded_at"</span>, <span class="t-s">"temperature_c"</span>)])</pre>
+daily &lt;- resp_body_json(resp, simplifyVector = <span class="t-kw">TRUE</span>)$data
+head(daily[, c(<span class="t-s">"day"</span>, <span class="t-s">"temperature_c"</span>)])</pre>
 </div>
 
 <div class="codebox">
 <div class="codebox__head"><span>Response · 200</span><button type="button" class="copy" data-copy hidden>Copy</button></div>
 <pre class="code">{
-  <span class="t-k">"items"</span>: [
+  <span class="t-k">"start"</span>: <span class="t-s">"2026-10-01T00:00:00+00:00"</span>,
+  <span class="t-k">"end"</span>: <span class="t-s">"2026-10-03T00:00:00+00:00"</span>,
+  <span class="t-k">"country_code"</span>: <span class="t-s">"ID"</span>,
+  <span class="t-k">"data"</span>: [
     {
-      <span class="t-k">"bin_ref"</span>: <span class="t-s">"b_1d0ca7"</span>,
-      <span class="t-k">"country"</span>: <span class="t-s">"ID"</span>,
-      <span class="t-k">"method"</span>: <span class="t-s">"takakura"</span>,
-      <span class="t-k">"recorded_at"</span>: <span class="t-s">"2026-08-26T00:00:00Z"</span>,
-      <span class="t-k">"temperature_c"</span>: <span class="t-n">61.58</span>,
-      <span class="t-k">"moisture_pct"</span>: <span class="t-n">52.46</span>,
-      <span class="t-k">"oxygen_pct"</span>: <span class="t-n">3.26</span>,
-      <span class="t-k">"co2_pct"</span>: <span class="t-n">8.61</span>,
-      <span class="t-k">"nh3_relative"</span>: <span class="t-n">0.889</span>,
-      <span class="t-k">"mq135_composite_ppm"</span>: <span class="t-n">602.15</span>,
-      <span class="t-k">"stage_id"</span>: <span class="t-n">2</span>,
-      <span class="t-k">"stage_name"</span>: <span class="t-s">"Peak Decomposition"</span>,
-      <span class="t-k">"faults"</span>: []
+      <span class="t-k">"country_code"</span>: <span class="t-s">"ID"</span>,
+      <span class="t-k">"day"</span>: <span class="t-s">"2026-10-01T00:00:00"</span>,
+      <span class="t-k">"bin_count"</span>: <span class="t-n">3</span>,
+      <span class="t-k">"reading_count"</span>: <span class="t-n">8640</span>,
+      <span class="t-k">"temperature_c"</span>: <span class="t-n">52.418</span>,
+      <span class="t-k">"temperature_c_min"</span>: <span class="t-n">31.204</span>,
+      <span class="t-k">"temperature_c_max"</span>: <span class="t-n">63.87</span>,
+      <span class="t-k">"temperature_c_sd"</span>: <span class="t-n">9.312</span>,
+      <span class="t-c">… the same four for moisture_percent, o2_percent,
+        co2_percent and nh3_ratio</span>
     },
     <span class="t-c">{ … }</span>
-  ],
-  <span class="t-k">"next_cursor"</span>: <span class="t-s">"eyJ0IjoiMjAyNi0wOC0yNlQwMjowMFoifQ"</span>
+  ]
 }</pre>
 </div>
 </div>
@@ -202,12 +207,14 @@ head(readings[, c(<span class="t-s">"recorded_at"</span>, <span class="t-s">"tem
 
 <section id="other-endpoints" class="stack">
 <h2 class="title-lg">Other endpoints</h2>
+<p class="small">The research endpoints take the same key. <code>/research/overview</code> and <code>/research/alerts</code> take the same parameters and return the same envelope.</p>
 <div class="tiles tiles--tight">
+<div id="research-overview" class="card ep"><span class="mono"><span class="verb">GET</span> /research/overview</span><span>One row per country for the whole window: bin and reading counts, and each sensor's average, minimum, maximum and standard deviation.</span></div>
+<div id="research-alerts" class="card ep"><span class="mono"><span class="verb">GET</span> /research/alerts</span><span>One row per country and alert type raised in the window: how many alerts, in how many bins, and the average hours until they resolved.</span></div>
+<div id="research-countries" class="card ep"><span class="mono"><span class="verb">GET</span> /research/countries</span><span>Every country with readings: bins, readings, and the first and last reading. Covers all time and takes no parameters.</span></div>
 <a id="public-stats" class="card card-link ep" href="https://api.compostiq.win/public/stats"><span class="mono"><span class="verb">GET</span> /public/stats</span><span>Totals: bins, countries, active devices, readings in the last 24 hours.</span></a>
 <a id="public-bins-by-country" class="card card-link ep" href="https://api.compostiq.win/public/bins-by-country"><span class="mono"><span class="verb">GET</span> /public/bins-by-country</span><span>Number of bins in each country.</span></a>
 <a id="public-trends" class="card card-link ep" href="https://api.compostiq.win/public/trends"><span class="mono"><span class="verb">GET</span> /public/trends</span><span>30-day daily means of temperature and moisture across all bins.</span></a>
-<a id="research-bins" class="card card-link ep" href="https://api.compostiq.win/research/bins"><span class="mono"><span class="verb">GET</span> /research/bins</span><span>One row per bin: reference, country, method, first and last reading.</span></a>
-<a id="research-stages" class="card card-link ep" href="https://api.compostiq.win/research/stages"><span class="mono"><span class="verb">GET</span> /research/stages</span><span>The phase ranges used to label every reading.</span></a>
 <a id="openapi" class="card card-link ep" href="https://api.compostiq.win/openapi.json"><span class="mono"><span class="verb">GET</span> /openapi.json</span><span>The machine-readable spec, for code generators and Postman.</span></a>
 </div>
 </section>

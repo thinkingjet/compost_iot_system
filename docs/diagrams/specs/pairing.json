@@ -1,0 +1,291 @@
+{
+  "id": "pairing",
+  "title": "Pairing a device",
+  "claim": "The owner carries a 6-digit code to the device by hand, and the device swaps it for its own key straight from the API. Its readings are refused until the owner gives it a name and a bin.",
+  "groups": [
+    {
+      "label": "Owner",
+      "cols": [
+        1
+      ],
+      "tone": "green"
+    },
+    {
+      "label": "Dashboard",
+      "cols": [
+        2
+      ],
+      "tone": "blue"
+    },
+    {
+      "label": "API",
+      "cols": [
+        3
+      ],
+      "tone": "teal"
+    },
+    {
+      "label": "Device",
+      "cols": [
+        4
+      ],
+      "tone": "violet"
+    }
+  ],
+  "phases": [
+    {
+      "label": "Get a code",
+      "rows": [
+        1,
+        1
+      ]
+    },
+    {
+      "label": "Pair",
+      "rows": [
+        2,
+        4
+      ]
+    },
+    {
+      "label": "Set up",
+      "rows": [
+        5,
+        5
+      ]
+    },
+    {
+      "label": "Send",
+      "rows": [
+        6,
+        6
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "owner1",
+      "row": 1,
+      "col": 1,
+      "kind": "actor",
+      "title": "Asks for a code"
+    },
+    {
+      "id": "wiz1",
+      "row": 1,
+      "col": 2,
+      "title": "Pairing wizard",
+      "sub": "/devices/add"
+    },
+    {
+      "id": "codes",
+      "row": 1,
+      "col": 3,
+      "title": "Issue a code",
+      "sub": "POST /pairing/codes",
+      "desc": "6 digits, valid 10 min"
+    },
+    {
+      "id": "owner2",
+      "row": 2,
+      "col": 1,
+      "kind": "actor",
+      "title": "Types it into the device"
+    },
+    {
+      "id": "device1",
+      "row": 2,
+      "col": 4,
+      "title": "Device's own page",
+      "sub": "POST /api/pair"
+    },
+    {
+      "id": "redeem",
+      "row": 3,
+      "col": 3,
+      "title": "Redeem the code",
+      "sub": "POST /pairing/redeem",
+      "desc": "stores only a hash of the key"
+    },
+    {
+      "id": "device2",
+      "row": 3,
+      "col": 4,
+      "title": "Device keeps its key",
+      "desc": "waits to be set up"
+    },
+    {
+      "id": "wiz2",
+      "row": 4,
+      "col": 2,
+      "title": "Wizard spots it",
+      "desc": "shows the hardware ID"
+    },
+    {
+      "id": "status",
+      "row": 4,
+      "col": 3,
+      "title": "Code status",
+      "sub": "GET /pairing/codes/{code}"
+    },
+    {
+      "id": "owner3",
+      "row": 5,
+      "col": 1,
+      "kind": "actor",
+      "title": "Names it, picks a bin"
+    },
+    {
+      "id": "wiz3",
+      "row": 5,
+      "col": 2,
+      "title": "Finish setup"
+    },
+    {
+      "id": "setup",
+      "row": 5,
+      "col": 3,
+      "title": "Set up the device",
+      "sub": "POST /devices/{id}/setup",
+      "desc": "puts it in the bin"
+    },
+    {
+      "id": "records",
+      "row": 6,
+      "col": 3,
+      "title": "Store readings",
+      "sub": "POST /records",
+      "desc": "checks alert rules too"
+    },
+    {
+      "id": "device3",
+      "row": 6,
+      "col": 4,
+      "title": "Sends readings",
+      "sub": "x-key header"
+    }
+  ],
+  "edges": [
+    {
+      "from": "owner1",
+      "to": "wiz1",
+      "label": "Get pairing code",
+      "step": 1
+    },
+    {
+      "from": "wiz1",
+      "to": "codes",
+      "label": "new code",
+      "step": 2
+    },
+    {
+      "from": "codes",
+      "to": "wiz1",
+      "label": "123456",
+      "kind": "data"
+    },
+    {
+      "from": "wiz1",
+      "to": "owner2",
+      "label": "shows it",
+      "kind": "data"
+    },
+    {
+      "from": "owner2",
+      "to": "device1",
+      "label": "6-digit code",
+      "step": 3,
+      "accent": true
+    },
+    {
+      "from": "device1",
+      "to": "redeem",
+      "label": "code + MAC",
+      "step": 4,
+      "accent": true
+    },
+    {
+      "from": "redeem",
+      "to": "device2",
+      "label": "API key, once",
+      "kind": "data",
+      "step": 5,
+      "accent": true
+    },
+    {
+      "from": "wiz1",
+      "to": "wiz2",
+      "label": "keeps asking",
+      "kind": "async",
+      "step": 6
+    },
+    {
+      "from": "wiz2",
+      "to": "status",
+      "label": "every 2 s",
+      "step": 6
+    },
+    {
+      "from": "status",
+      "to": "wiz2",
+      "label": "redeemed",
+      "kind": "data"
+    },
+    {
+      "from": "wiz2",
+      "to": "owner3",
+      "label": "hardware ID",
+      "kind": "data"
+    },
+    {
+      "from": "owner3",
+      "to": "wiz3",
+      "label": "name, bin",
+      "step": 7
+    },
+    {
+      "from": "wiz3",
+      "to": "setup",
+      "label": "set up",
+      "step": 8
+    },
+    {
+      "from": "device2",
+      "to": "device3",
+      "label": "409 until set up",
+      "kind": "async"
+    },
+    {
+      "from": "device3",
+      "to": "records",
+      "label": "readings",
+      "step": 9
+    },
+    {
+      "from": "records",
+      "to": "device3",
+      "label": "200",
+      "kind": "data"
+    }
+  ],
+  "steps": [
+    "The owner opens Devices → Pair a device and presses Get pairing code.",
+    "The dashboard's server asks the API for a code. The API saves it in `setup_codes`: 6 digits, valid for 10 minutes (`PAIRING_CODE_MINUTES`), at most 5 live codes per owner.",
+    "The owner reads the code off the screen and types it into the device's own web page. The code is the only credential, and it travels by hand.",
+    "The device sends the code and its hardware ID (its MAC) to the API. After 10 wrong codes from one address in 15 minutes, the API answers 429.",
+    "In one transaction the API creates the device row, stores a SHA-256 hash of a new key and marks the code used. It returns the key to the device once; the dashboard never sees it.",
+    "Meanwhile the wizard asks every 2 seconds whether its code has been used. Once it has, it shows which hardware ID used it.",
+    "The owner checks the ID against the device's page. If it is not theirs, \"That's not my device\" unpairs it. Otherwise they give it a name and choose or create a bin.",
+    "`POST /devices/{id}/setup` saves the name and opens the device's bin assignment.",
+    "Until then every upload got 409, and the device kept only its newest reading and checked again every 10 seconds. Now readings are stored, alert rules are checked, and the wizard shows the device as online."
+  ],
+  "notes": [
+    "The wizard's steps are Pair, Confirm, Set up and Done. Confirm only loads the owner's bins; the setup is saved by Finish setup (step 8).",
+    "A device can also be added with no pairing at all, by registering it with an API key. That path is in the next diagram.",
+    "The device in this demo is `emulator/`, a standard-library Python program that behaves like a sensor and keeps close to what ESP32 firmware could do."
+  ],
+  "legend": {
+    "accent": "code by hand, key straight to the device",
+    "async": "waits, then repeats"
+  }
+}
