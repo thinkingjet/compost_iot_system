@@ -302,12 +302,11 @@ strong { color: var(--ink); }
 .hero__actions { padding-top: 8px; }
 .hero__aside { flex: 1 1 420px; min-width: 0; }
 
-/* Screenshots of the running dashboard (assets/screens), in a plain browser frame. */
-.shot-stage { position: relative; padding: 28px 28px 0 0; display: flex; flex-direction: column; gap: 14px; }
-.shot-stage__backdrop { position: absolute; inset: 0 0 72px 72px; background: var(--green-soft); border-radius: 24px; }
-.shot-stage .shot, .shot-stage .shot-caption { position: relative; }
-.shot-figure { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+/* Screenshots of the running dashboard (assets/screens). Each is captured at
+   about the width it is shown at, with a phone crop where the desktop one
+   would be too small to read. */
 .shot {
+  display: block;
   overflow: hidden;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -315,12 +314,24 @@ strong { color: var(--ink); }
   box-shadow: 0 1px 2px rgba(26, 23, 18, 0.06), 0 12px 32px -12px rgba(26, 23, 18, 0.18);
 }
 .shot img { display: block; width: 100%; height: auto; }
-.shot__bar { display: flex; align-items: center; gap: 6px; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); background: var(--ground); }
-.shot__bar span:not(.shot__url) { width: 10px; height: 10px; border-radius: 50%; background: var(--line-strong); }
-.shot__url { margin-left: 10px; font: 12px var(--font-mono); color: var(--muted); }
 .shot--on-dark { border-color: var(--earth-line); }
+.shot-figure { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+/* a capture of a narrow window: kept near its own size when it gets a whole row */
+.shot-figure--narrow { width: 100%; max-width: 560px; }
 .shot-caption { font-size: 14px; color: var(--muted); }
 .shot-caption--on-dark { color: var(--on-dark-3); }
+
+.hero-shot { width: 100%; max-width: 1040px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.hero-shot__panel { padding: clamp(14px, 3.5vw, 36px); background: var(--green-soft); border-radius: 24px; }
+.hero-shot .shot-caption { text-align: center; }
+
+/* Text beside a screenshot; one column on narrow screens. */
+.feature { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 32px 56px; align-items: center; }
+.feature--text-wide { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); }
+
+/* Two screenshots side by side, each column as wide as its image is
+   proportionally (1120×712 and 1536×708), so both come out the same height. */
+.shot-pair { display: grid; grid-template-columns: minmax(0, 157fr) minmax(0, 217fr); gap: 24px; align-items: start; }
 
 .c-temp { color: var(--temp); }
 .c-moist { color: var(--moist); }
@@ -345,6 +356,8 @@ strong { color: var(--ink); }
 .sensor-list { display: flex; flex-wrap: wrap; gap: 12px 32px; padding-top: 8px; border-top: 1px dashed var(--line-strong); }
 .sensor { flex: 1 1 180px; display: flex; gap: 10px; padding-top: 16px; font-size: 14px; color: var(--ink-2); }
 .sensor .icon { margin-top: 2px; }
+.sensor-list--stack { flex-direction: column; gap: 18px; padding-top: 0; border-top: 0; }
+.sensor-list--stack .sensor { flex: none; padding-top: 0; }
 .sensor strong { display: block; }
 
 .step-card { padding: 28px; display: flex; flex-direction: column; gap: 14px; }
@@ -352,9 +365,6 @@ strong { color: var(--ink); }
 .step-card__num { font: 800 44px/1 var(--font-display); color: var(--green-mid); }
 .step-card p { color: var(--ink-2); }
 
-.alerts-layout { display: flex; flex-wrap: wrap; gap: 40px 64px; align-items: flex-start; }
-.alerts-layout__intro { flex: 1 1 340px; min-width: 0; }
-.rule-box { flex: 2 1 560px; min-width: 0; }
 .rule-list { overflow: hidden; }
 .rule { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding: 18px 22px; border-bottom: 1px solid var(--line-soft); }
 .rule:last-child { border-bottom: 0; }
@@ -711,8 +721,7 @@ strong { color: var(--ink); }
   }
   .docs-mobile a[aria-current] { background: var(--ink); border-color: var(--ink); color: var(--on-dark); }
   .def__k { flex-basis: 100%; }
-  .shot-stage { padding: 14px 14px 0 0; }
-  .shot-stage__backdrop { inset: 0 0 56px 32px; }
+  .feature, .feature--text-wide, .shot-pair { grid-template-columns: minmax(0, 1fr); }
   .glance__item { border-right: 0; border-bottom: 1px solid var(--line-soft); }
   .facts > div { border-right: 0; border-bottom: 1px solid var(--line-soft); }
   .facts > div:last-child { border-bottom: 0; }

@@ -60,13 +60,14 @@
 </div>
 </div>
 
-<figure class="shot-stage">
-<div class="shot-stage__backdrop" aria-hidden="true"></div>
-<div class="shot">
-<div class="shot__bar" aria-hidden="true"><span></span><span></span><span></span><span class="shot__url">dashboard.compostiq.win</span></div>
-<img src="/assets/screens/bin-live.webp" width="1600" height="1012" alt="The CompostIQ dashboard showing a bin's Live telemetry tab: the compost stage card reads Peak Decomposition, stage 3 of 5, with over 99% confidence, above the latest temperature, moisture, oxygen, CO₂ and ammonia readings and a 24-hour chart.">
+<figure class="hero-shot">
+<div class="hero-shot__panel">
+<picture class="shot">
+<source media="(max-width: 640px)" srcset="/assets/screens/bin-live-phone.webp" width="1000" height="1366">
+<img src="/assets/screens/bin-live.webp" width="1824" height="1000" alt="The Live telemetry tab for Backyard bin in Mataram, Lombok. The compost stage card reads Peak Decomposition, stage 3 of 5, over 99% confidence, labelled Model estimate. Below it are the latest readings: temperature 62.8 °C, moisture 47.5 %, oxygen 10.3 %, CO₂ 10.2 % and NH₃ 0.8.">
+</picture>
 </div>
-<figcaption class="shot-caption">A bin's Live tab in the dashboard: the model's stage estimate, the latest reading from each sensor, and the last 24 hours charted.</figcaption>
+<figcaption class="shot-caption">A bin's Live tab in the dashboard: the model's stage estimate and the latest reading from each sensor.</figcaption>
 </figure>
 </div>
 </section>
@@ -89,18 +90,27 @@
 </ol>
 <p class="small dim">A bin that never gets hot enough, like a small Takakura basket, goes straight from active thermophilic to cooling. The model was trained on composting cycles generated from these ranges.</p>
 
-<figure class="shot-figure">
-<div class="shot"><img src="/assets/screens/bin-history.webp" width="1200" height="411" loading="lazy" alt="A bin's Historical stats tab: daily average and daily peak temperature over the last 30 days, climbing from 30 °C past the dashed 55 °C pathogen-kill line."></div>
-<figcaption class="shot-caption">Each bin's history: 30 days of daily averages, with the 55 °C pathogen-kill line.</figcaption>
-</figure>
-
-<ul class="sensor-list">
+<div class="feature">
+<div class="stack">
+<h3 class="title-lg">What each reading is used for</h3>
+<ul class="sensor-list sensor-list--stack">
 <li class="sensor"><svg class="icon c-temp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 13.5a4 4 0 1 0 4 0v-8.5a2 2 0 0 0-4 0v8.5"/><path d="M10 9l4 0"/></svg><span><strong>Temperature</strong>Feeds the stage estimate. Alert above 70 °C.</span></li>
 <li class="sensor"><svg class="icon c-moist" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M7.502 19.423c2.602 2.105 6.395 2.105 8.996 0c2.602-2.105 3.262-5.708 1.566-8.546l-4.89-7.26c-.42-.625-1.287-.803-1.936-.397a1.376 1.376 0 0 0-.41.397l-4.893 7.26c-1.695 2.838-1.035 6.441 1.567 8.546z"/></svg><span><strong>Moisture</strong>Feeds the stage estimate. Alert below 30 % or above 70 %.</span></li>
 <li class="sensor"><svg class="icon c-oxy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 8h8.5a2.5 2.5 0 1 0-2.34-3.24"/><path d="M3 12h15.5a2.5 2.5 0 1 1-2.34 3.24"/><path d="M4 16h5.5a2.5 2.5 0 1 1-2.34 3.24"/></svg><span><strong>Oxygen</strong>Alert below 1 %.</span></li>
 <li class="sensor"><svg class="icon c-co2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0-18 0"/><path d="M9 10a2 2 0 1 0 0 4"/><path d="M13 12a2 2 0 1 0 4 0a2 2 0 1 0-4 0"/></svg><span><strong>CO₂</strong>Alert above 12 %.</span></li>
 <li class="sensor"><svg class="icon c-nh3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3c-1.5 3-5 5.5-5 9.5a5 5 0 0 0 10 0c0-4-3.5-6.5-5-9.5z"/><path d="M10 14h4"/></svg><span><strong>Ammonia</strong>A relative level from 0 to 1. Charted, with no alert.</span></li>
 </ul>
+</div>
+<figure class="shot-figure">
+<picture class="shot">
+<source media="(max-width: 640px)" srcset="/assets/screens/bin-history-phone.webp" width="900" height="881">
+<img src="/assets/screens/bin-history.webp" width="1536" height="764" loading="lazy" alt="A bin's Historical stats tab: daily average and daily peak temperature over the last 30 days, climbing from 30 °C past the dashed 55 °C pathogen-kill line to about 62 °C.">
+</picture>
+<figcaption class="shot-caption">A bin's Historical stats tab: 30 days of daily temperatures, against the 55 °C pathogen-kill line.</figcaption>
+</figure>
+</div>
+
+
 </div>
 </section>
 
@@ -129,14 +139,18 @@
 </li>
 </ol>
 
-<div class="tiles tiles--lg">
+<div class="shot-pair">
 <figure class="shot-figure">
-<div class="shot"><img src="/assets/screens/pair-device-page.webp" width="1200" height="304" loading="lazy" alt="The device's own web page, titled CompostIQ device, CompostIQ Emulator firmware 0.1.0, not paired, with a 6-digit pairing code typed into the code box next to a Pair device button."></div>
-<figcaption class="shot-caption">On the device's page: type the code from the dashboard.</figcaption>
+<picture class="shot">
+<source media="(max-width: 640px)" srcset="/assets/screens/pair-device-page-phone.webp" width="900" height="900">
+<img src="/assets/screens/pair-device-page.webp" width="1120" height="712" loading="lazy" alt="The device's own web page, CompostIQ device, CompostIQ Emulator firmware 0.1.0, not paired. Under Pair with your CompostIQ account are three steps and a 6-digit code typed into the code box, next to a Pair device button."></picture>
+<figcaption class="shot-caption">1 · On the device's page, type the code from the dashboard.</figcaption>
 </figure>
 <figure class="shot-figure">
-<div class="shot"><img src="/assets/screens/pair-confirm.webp" width="1200" height="487" loading="lazy" alt="The dashboard's Pair a device wizard at step 2, Confirm: it shows the hardware ID, model CompostIQ Emulator and firmware 0.1.0 of the device that used the code, with Confirm registration and That's not my device buttons."></div>
-<figcaption class="shot-caption">In the dashboard: check it's your device, then confirm.</figcaption>
+<picture class="shot">
+<source media="(max-width: 640px)" srcset="/assets/screens/pair-confirm-phone.webp" width="800" height="1246">
+<img src="/assets/screens/pair-confirm.webp" width="1536" height="708" loading="lazy" alt="The dashboard's pairing wizard at step 2, Confirm, showing the hardware ID, model CompostIQ Emulator and firmware 0.1.0 of the device that used the code, with That's not my device and Confirm registration buttons."></picture>
+<figcaption class="shot-caption">2 · In the dashboard, check it's your device, then confirm.</figcaption>
 </figure>
 </div>
 
@@ -145,13 +159,16 @@
 </section>
 
 <section class="section">
-<div class="wrap alerts-layout">
-<div class="alerts-layout__intro stack">
+<div class="wrap stack stack--lg">
+<div class="split">
+<div class="split__main stack">
 <span class="eyebrow">Alerts</span>
-<h2 class="display-3">It tells you what to do, not just what it measured.</h2>
-<p class="body-lg">When a reading breaks one of the fixed rules, or a device goes quiet for 10 minutes, the bin gets an alert. It closes by itself once the readings are back in range. The bin's Maintenance tab lists three steps for each open alert.</p>
+<h2 class="display-2">It tells you what to do, not just what it measured.</h2>
 </div>
-<div class="rule-box stack">
+<p class="split__aside body-lg">When a reading breaks one of the fixed rules, or a device goes quiet for 10 minutes, the bin gets an alert. It closes by itself once the readings are back in range. The bin's Maintenance tab lists three steps for each open alert.</p>
+</div>
+<div class="feature feature--text-wide">
+<div class="stack stack--sm">
 <ul class="card rule-list">
 <li class="rule"><span class="rule__cond">Temperature &gt; 70 °C</span><span class="rule__action">Turn the pile to cool it</span><span class="tag tag--hot">High</span></li>
 <li class="rule"><span class="rule__cond">Oxygen &lt; 1 %</span><span class="rule__action">Turn the pile to let air in</span><span class="tag tag--hot">High</span></li>
@@ -161,8 +178,9 @@
 <li class="rule"><span class="rule__cond">No reading for 10 min</span><span class="rule__action">Check the device's power and Wi-Fi</span><span class="tag tag--warn">Medium</span></li>
 </ul>
 <p class="small dim">An offline alert is worked out each time you look, from when the device was last heard from, and is not stored.</p>
-<figure class="shot-figure">
-<div class="shot"><img src="/assets/screens/bin-maintenance.webp" width="900" height="385" loading="lazy" alt="A bin's Maintenance tab with one open alert, Moisture is too low, started 1 h ago, and three numbered steps: add water while turning the pile, stop when a squeezed handful feels damp but doesn't drip, and cover the bin."></div>
+</div>
+<figure class="shot-figure shot-figure--narrow">
+<picture class="shot"><img src="/assets/screens/bin-maintenance.webp" width="1040" height="408" loading="lazy" alt="A bin's Maintenance tab with one open alert, Moisture is too low, started 1 h ago, and three numbered steps: add water while turning the pile, stop when a squeezed handful feels damp but doesn't drip, and cover the bin to keep the moisture in."></picture>
 <figcaption class="shot-caption">The Maintenance tab for a bin that has dried out.</figcaption>
 </figure>
 </div>
@@ -212,7 +230,10 @@
 </div>
 
 <figure class="shot-figure">
-<div class="shot shot--on-dark"><img src="/assets/screens/research-data.webp" width="1400" height="838" loading="lazy" alt="The Explore data page in a researcher's dashboard: Daily, Overall and Alerts views, country and date filters, a Download CSV button, and a table with one row per country per UTC day giving bins, readings, and the average with minimum and maximum of temperature, moisture, oxygen, CO₂ and ammonia."></div>
+<picture class="shot shot--on-dark">
+<source media="(max-width: 640px)" srcset="/assets/screens/research-data-phone.webp" width="1003" height="646">
+<img src="/assets/screens/research-data.webp" width="1600" height="702" loading="lazy" alt="The Explore data page in a researcher's dashboard: Daily, Overall and Alerts views, country and date filters, a Download CSV button, and a table with one row per country per UTC day giving bins, readings, and the average with minimum and maximum of temperature, moisture, oxygen, CO₂ and ammonia.">
+</picture>
 <figcaption class="shot-caption shot-caption--on-dark">A researcher's Explore data page: the same per-country figures the API returns.</figcaption>
 </figure>
 </div>
