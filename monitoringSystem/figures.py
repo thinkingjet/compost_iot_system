@@ -88,8 +88,11 @@ GAS_SENSORS = (
 )
 
 
-def readings_figure(readings, device_names, sensors=CLIMATE_SENSORS):
+def readings_figure(readings, device_names, sensors=CLIMATE_SENSORS, hours=24):
     """Readings from GET /bins/{id}/records or /devices/{id}/records, one line per sensor.
+
+    The x-axis starts on the whole window asked for (the last `hours`, up to
+    now), so a few readings or none don't shrink it; zooming still works.
 
     A bin can hold several sensors: each gets its own lines, or they would zigzag
     between the two. device_names maps a device id to its name for the legend.
@@ -113,6 +116,8 @@ def readings_figure(readings, device_names, sensors=CLIMATE_SENSORS):
             )
     if not readings:
         figure.add_annotation(text="No readings in this period", showarrow=False, xref="paper", yref="paper", x=0.5, y=0.5)
+    now = datetime.now(SITE_TIMEZONE).replace(tzinfo=None)
+    figure.update_xaxes(range=[now - timedelta(hours=hours), now])
     figure.update_layout(height=280, hovermode="x unified", legend={"orientation": "h", "x": 0, "y": 1.14})
     return figure
 

@@ -447,7 +447,7 @@ def _register_live_range(kind):
         except (NotAuthenticated, ApiError, ApiUnavailable):
             # keep the charts as they are; the next page load shows what's wrong
             return no_update, no_update
-        figures = readings_figure(readings, names), readings_figure(readings, names, GAS_SENSORS)
+        figures = readings_figure(readings, names, hours=hours), readings_figure(readings, names, GAS_SENSORS, hours)
         for figure in figures:
             figure.update_layout(template=figure_template(color_scheme))
         return figures
