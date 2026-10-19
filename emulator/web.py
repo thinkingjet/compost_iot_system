@@ -8,6 +8,7 @@ One static page plus a handful of JSON routes:
   GET  /api/status         everything the page shows
   POST /api/pair           {"code": "123456"}
   POST /api/actions/<a>    a = turn | water | feedstock
+  POST /api/batch          {"days_ago": 5}: a fresh batch started then, history sent
   POST /api/uploads        {"paused": true | false}
   POST /api/uploads/retry  skip the current back-off
   POST /api/reset          factory reset (clears pairing only)
@@ -22,7 +23,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from device import PairingError
+from device import BackfillError, PairingError
 
 log = logging.getLogger(__name__)
 
@@ -119,6 +120,14 @@ def make_handler(device):
                     device.apply_action(path.removeprefix("/api/actions/"))
                 except ValueError:
                     return self._error(HTTPStatus.NOT_FOUND, "unknown action")
+            elif path == "/api/batch":
+                days = body.get("days_ago")
+                if not isinstance(days, int) or isinstance(days, bool):
+                    return self._error(HTTPStatus.BAD_REQUEST, "days_ago must be a whole number")
+                try:
+                    device.start_batch_in_past(days)
+                except BackfillError as error:
+                    return self._error(error.status, error.message)
             elif path == "/api/uploads":
                 paused = body.get("paused")
                 if not isinstance(paused, bool):

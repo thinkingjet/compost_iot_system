@@ -59,6 +59,24 @@ class WebTest(unittest.TestCase):
         self.assertEqual(json.loads(body)["pile"]["waterings"], 1)
         self.assertEqual(self.call("/api/actions/explode", {})[0], 404)
 
+    def test_starting_a_batch_in_the_past(self):
+        status, body = self.call("/api/batch", {"days_ago": 2})
+        self.assertEqual(status, 409)
+        self.assertIn("Pair the device first", json.loads(body)["error"])
+
+        self.call("/api/pair", {"code": self.cloud.issue_code()})
+        self.cloud.set_up_all()
+        with self.device.lock:
+            self.device._take_reading()
+        self.device._upload_once()
+        status, body = self.call("/api/batch", {"days_ago": 2})
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["cloud"]["queued"], 2 * 48 + 1)
+
+        for days in ("2", 2.5, True, None):
+            self.assertEqual(self.call("/api/batch", {"days_ago": days})[0], 400, days)
+        self.assertEqual(self.call("/api/batch", {"days_ago": 999})[0], 400)
+
     def test_posts_must_be_json_so_other_sites_cant_press_buttons(self):
         # a cross-site form or fetch without a preflight can only send these types
         for content_type in ("text/plain", "application/x-www-form-urlencoded"):

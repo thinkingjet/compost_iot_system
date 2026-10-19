@@ -105,6 +105,23 @@
           <span><b>Add fresh feedstock</b><small>Starts a new batch from the first stage.</small></span>
         </button>
       </div>
+
+      <!-- the cloud's stage model reads timestamps as real time; see README, Stage estimates in the cloud -->
+      <form id="backfill-form" class="backfill" autocomplete="off">
+        <b>Start a batch in the past</b>
+        <small>Fresh feedstock this many days ago. The device runs that batch up to now and sends
+          its history, a reading every 30 minutes, so the cloud's stage estimate has real-time
+          readings to work from. Replaces the pile.</small>
+        <p class="notice" id="time-scale-notice" hidden></p>
+        <div class="row">
+          <label class="sr-only" for="backfill-days">Days ago</label>
+          <input id="backfill-days" class="days-input" type="number" min="1" max="20" step="1" value="5"
+                 required aria-describedby="backfill-hint">
+          <span class="dim small">days ago</span>
+          <button type="submit" class="btn" id="backfill-button">Start batch</button>
+        </div>
+        <p class="dim small" id="backfill-hint"></p>
+      </form>
     </section>
 
     <section class="card" aria-labelledby="uplink-title">

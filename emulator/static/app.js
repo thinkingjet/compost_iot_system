@@ -211,6 +211,24 @@ function renderUplink(s) {
   setPill($("pill"), ...headline);
 }
 
+function renderBackfill(s) {
+  const b = s.backfill;
+  $("backfill-days").max = b.max_days;
+  $("backfill-button").disabled = Boolean(b.blocked);
+  $("backfill-hint").textContent = b.blocked ||
+    `Up to ${b.max_days} days, so the history fits the upload queue. Best in a bin with no recent ` +
+    "readings: the cloud treats a bin's recent readings as one batch.";
+
+  // the pile and the timestamps only stay in step at TIME_SCALE=1
+  const fast = s.sampling.time_scale > 1;
+  $("time-scale-notice").hidden = !fast;
+  $("time-scale-notice").textContent = fast
+    ? `Compost time runs ${s.sampling.time_scale}× faster than the clock the readings are stamped ` +
+      "with, and the cloud's stage estimate reads them as real time, so it won't follow this pile " +
+      "for long. Set TIME_SCALE=1 to keep them in step."
+    : "";
+}
+
 function renderLog(events) {
   $("log").replaceChildren(...events.map((event) =>
     el("li", {}, el("time", { datetime: event.at }, clock(event.at)), el("span", {}, event.text))));
@@ -223,6 +241,7 @@ function render(s) {
   renderTiles(s);
   renderStage(s.pile);
   renderUplink(s);
+  renderBackfill(s);
   renderLog(s.events);
   $("footer").textContent =
     `Hardware ID ${s.device.uid} · a reading every ${s.sampling.reading_interval_seconds} s · ` +
@@ -288,6 +307,17 @@ document.querySelectorAll("[data-reset]").forEach((button) => {
       render(await api("/api/reset", {}));
       toast("Pairing cleared");
     });
+  });
+});
+
+$("backfill-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const days = Number($("backfill-days").value);
+  const label = `${days} day${days === 1 ? "" : "s"} ago`;
+  if (!confirm(`Replace the pile with a batch started ${label} and send its history to the cloud?`)) return;
+  press($("backfill-button"), async () => {
+    render(await api("/api/batch", { days_ago: days }));
+    toast(`Batch started ${label}: sending its history`);
   });
 });
 

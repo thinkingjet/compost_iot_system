@@ -2,8 +2,9 @@ import dataclasses
 import json
 import stat
 import unittest
+from datetime import datetime, timedelta, timezone
 
-from device import Device, PairingError
+from device import BACKFILL_STEP_MINUTES, BackfillError, Device, PairingError
 from tests.fake_cloud import FakeCloud
 from tests.helpers import make_settings
 
@@ -213,6 +214,87 @@ class DeviceTest(unittest.TestCase):
         self.reading_and_upload(moved)
         self.assertEqual(moved.status()["cloud"]["queued"], 0)
         self.assertIsNone(moved.status()["cloud"]["last_attempt_at"])
+
+    # ------------------------------------------------- a batch in the past ---
+
+    def set_up_and_sending(self):
+        self.pair()
+        self.reading_and_upload()  # the first upload shows the cloud takes readings
+
+    def send_everything(self):
+        while self.device.queue:
+            self.device._upload_once()
+
+    def test_a_batch_in_the_past_sends_its_history_up_to_now(self):
+        self.set_up_and_sending()
+        before = datetime.now(timezone.utc)
+        self.device.start_batch_in_past(3)
+
+        stamps = [datetime.fromisoformat(record["timestamp"]) for _, record in self.device.queue]
+        self.assertEqual(len(stamps), 3 * 48 + 1)
+        steps = {later - earlier for earlier, later in zip(stamps, stamps[1:])}
+        self.assertEqual(steps, {timedelta(minutes=BACKFILL_STEP_MINUTES)})
+        self.assertLess(abs(stamps[-1] - before), timedelta(seconds=5))
+        self.assertEqual(stamps[-1] - stamps[0], timedelta(days=3))
+
+        # the live pile carries on from the end of that history
+        pile = self.device.status()["pile"]
+        self.assertAlmostEqual(pile["batch_day"], 3.0, places=2)
+        self.assertEqual(self.device.latest["timestamp"], self.device.queue[-1][1]["timestamp"])
+        self.assertIn("started a batch 3 days ago: 145 readings", self.device.status()["events"][0]["text"])
+
+        self.send_everything()
+        self.assertEqual(len(self.cloud.records), 1 + 145)
+
+    def test_a_batch_in_the_past_starts_from_fresh_feedstock_and_is_looked_after(self):
+        self.device = self.new_device(start_stage=3)
+        self.set_up_and_sending()
+        self.device.start_batch_in_past(12)
+        first = self.device.queue[0][1]
+        self.assertLess(first["temperature"], 40)  # fresh feedstock, not the cooling pile it replaced
+        self.assertGreater(self.device.model.waterings, 0)
+        moisture = [record["moisture_percent"] for _, record in self.device.queue]
+        self.assertGreater(min(moisture), 45)  # watered below 50 %, so it never stalls
+
+    def test_a_batch_in_the_past_drops_the_old_piles_unsent_readings(self):
+        self.set_up_and_sending()
+        self.device.set_uploads_paused(True)
+        for _ in range(3):
+            self.reading_and_upload()
+        self.device.start_batch_in_past(1)
+        status = self.device.status()
+        self.assertEqual((status["cloud"]["queued"], status["cloud"]["dropped_total"]), (49, 3))
+        self.assertIn("3 unsent readings of the old pile dropped", status["events"][0]["text"])
+
+    def test_a_batch_in_the_past_waits_until_the_cloud_takes_readings(self):
+        with self.assertRaisesRegex(BackfillError, "Pair the device first"):
+            self.device.start_batch_in_past(2)
+        self.pair(set_up=False)
+        self.reading_and_upload()
+        with self.assertRaises(BackfillError) as refused:
+            self.device.start_batch_in_past(2)
+        self.assertEqual(refused.exception.status, 409)
+        self.assertIn("set it up in the dashboard", refused.exception.message)
+        self.assertEqual(self.device.status()["backfill"]["blocked"], refused.exception.message)
+
+        # set up, but nothing sent since this start: it might have been moved out of its bin
+        self.cloud.set_up_all()
+        restarted = self.new_device()
+        with self.assertRaises(BackfillError):
+            restarted.start_batch_in_past(2)
+        self.reading_and_upload(restarted)
+        restarted.start_batch_in_past(2)
+        self.assertIsNone(restarted.status()["backfill"]["blocked"])
+
+    def test_a_batch_in_the_past_has_to_fit_the_queue(self):
+        self.device = self.new_device(queue_max=200)
+        self.set_up_and_sending()
+        self.assertEqual(self.device.status()["backfill"]["max_days"], 4)  # 200 readings x 30 min
+        for days in (0, 5, -1):
+            with self.assertRaisesRegex(BackfillError, "between 1 and 4 days"):
+                self.device.start_batch_in_past(days)
+        self.device.start_batch_in_past(4)
+        self.assertEqual(self.device.status()["cloud"]["dropped_total"], 0)
 
 
 if __name__ == "__main__":

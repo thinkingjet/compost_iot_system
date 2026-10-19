@@ -92,7 +92,10 @@ Common values for `CLOUD_API_URL`:
   with a sparkline and the healthy band for the current stage. Values outside
   the band are flagged. Below that is the pile's actual stage and how far
   through it is, marked *Emulator only* because a real device can't know this.
-- **Pile controls.** Turn the pile, add water, add fresh feedstock.
+- **Pile controls.** Turn the pile, add water, add fresh feedstock. Below them,
+  **Start a batch in the past** gives the cloud's stage estimate a history it can
+  follow ([below](#stage-estimates-in-the-cloud)), with a note when `TIME_SCALE`
+  is above 1.
 - **Cloud uplink.** Where readings go, when the last batch was sent, how many
   are waiting, and any error. Uploads can be paused, which is handy for
   testing offline behaviour.
@@ -134,6 +137,41 @@ The pile responds to care:
 Unlike the simulator, the pile never gets turned or watered at random: that's
 up to you. Left alone, it runs through the stages and then dries out in
 maturation.
+
+## Stage estimates in the cloud
+
+The API estimates a bin's compost stage from its readings (`GET /bins/{id}/stage`,
+see the [API README](../backendAPI/README.md#compost-stage-estimate)). Its model
+reads the timestamps as real time: it needs a day of readings, looks back over
+24-hour windows, and counts how many hours the core has held 55 °C. With the
+default `TIME_SCALE=60` the pile goes through a whole batch in about 8 hours of
+timestamps, so the estimate can't follow it. The device page says so whenever
+`TIME_SCALE` is above 1.
+
+To get a meaningful estimate:
+
+1. Run the emulator with `TIME_SCALE=1`, so the pile and the timestamps stay in step.
+2. Pair it and set it up in a bin with no recent readings, and wait until the
+   uplink shows *Online*.
+3. Under **Pile controls**, start a batch in the past, say 5 days ago
+   (`POST /api/batch {"days_ago": 5}`).
+
+That replaces the pile with fresh feedstock added that long ago and runs it up
+to now in 30-minute steps (the simulator's sample rate), watering it whenever
+moisture falls below 50 %, as someone looking after it would. Every step is a
+reading stamped at its own time, from 5 days ago to now, queued and uploaded in
+the usual batches. Live readings then carry on from the pile it ends with. Its
+actual stage is in the sensors card (*Emulator only*) to compare with the
+dashboard's estimate.
+
+- **Only once the cloud takes readings.** Before setup the queue keeps only the
+  newest reading, so the history would be lost. After a restart, the device waits
+  for its first successful upload too.
+- **At most `QUEUE_MAX` readings**: 20 days with the default 1000.
+- **Unsent readings of the old pile are dropped** (counted as *Dropped*), since
+  they'd land in the middle of the new history. Readings already sent stay in
+  the cloud, and the cloud treats a bin's recent readings as one batch, so a bin
+  that has had other readings in the last few weeks gives a muddled estimate.
 
 ## Pairing
 
@@ -311,8 +349,9 @@ cd emulator
 python -m unittest        # or: pytest
 ```
 
-The suite has 39 tests and runs in about 2 seconds. It covers the model, pairing,
-the wait for setup, every uplink path against the fake cloud, and the web routes.
+The suite has 54 tests and runs in about 3 seconds. It covers the model, pairing,
+the wait for setup, every uplink path against the fake cloud, a batch started in
+the past, and the web routes.
 
 To try the device without running the API and dashboard, run the fake cloud:
 
