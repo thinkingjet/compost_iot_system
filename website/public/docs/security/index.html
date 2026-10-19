@@ -54,7 +54,7 @@
 <h2>Get started</h2>
 <a href="/docs/">Quickstart</a>
 <a href="/open-data/#fields">Data dictionary</a>
-<a href="/docs/api/#errors">Rate limits &amp; errors</a>
+<a href="/docs/api/#auth">Keys &amp; errors</a>
 </div>
 <div>
 <h2>Public statistics</h2>
@@ -64,9 +64,10 @@
 </div>
 <div>
 <h2>Research data</h2>
-<a href="/docs/api/"><span class="verb">GET</span>/research/readings</a>
-<a href="/docs/api/#research-bins"><span class="verb">GET</span>/research/bins</a>
-<a href="/docs/api/#research-stages"><span class="verb">GET</span>/research/stages</a>
+<a href="/docs/api/"><span class="verb">GET</span>/research/daily</a>
+<a href="/docs/api/#research-overview"><span class="verb">GET</span>/research/overview</a>
+<a href="/docs/api/#research-alerts"><span class="verb">GET</span>/research/alerts</a>
+<a href="/docs/api/#research-countries"><span class="verb">GET</span>/research/countries</a>
 </div>
 <div>
 <h2>Devices &amp; accounts</h2>
@@ -74,7 +75,6 @@
 </div>
 <div>
 <h2>Resources</h2>
-<a href="/open-data/#downloads">Bulk downloads</a>
 <a href="https://api.compostiq.win/openapi.json">OpenAPI spec (JSON)</a>
 <a href="/docs/api/#changelog">Changelog</a>
 </div>
@@ -154,7 +154,7 @@
 
 <section id="open-data" class="doc-section">
 <h2>What the open data includes</h2>
-<p>Readings shared through the open data API are anonymised first: no names, emails, bin names, locations finer than country, or device identifiers. The <a href="/open-data/#fields">data dictionary</a> lists every field.</p>
+<p>The research API only ever returns figures summed up per country: never names, emails, bin names, locations finer than country, or device identifiers. It needs a research key, which only a researcher account can create. Keys are stored as SHA-256 hashes, and deleting one stops it working at once. The <a href="/open-data/#fields">data dictionary</a> lists every field.</p>
 </section>
 
 <section id="report" class="doc-section">
