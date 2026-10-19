@@ -64,6 +64,8 @@ class DailyReading(BaseModel):
     avg_o2: float
     avg_co2: float
     avg_nh3: float
+    # the stage the bin spent the most saved hours in that day (bin_stages); None if none saved
+    stage: str | None
 
 
 class StageEstimate(BaseModel):
@@ -208,22 +210,94 @@ def get_bin_history(bin_id: uuid.UUID, days: Annotated[int, Query(ge=1, le=365)]
         results = db.execute(
             text(
                 """
-                SELECT (timestamp AT TIME ZONE :tz)::date AS day,
-                    avg(temperature) AS avg_temp,
-                    max(temperature) AS max_temp,
-                    avg(moisture_percent) AS avg_moisture,
-                    avg(o2_percent) AS avg_o2,
-                    avg(co2_percent) AS avg_co2,
-                    avg(nh3_ratio) AS avg_nh3
-                FROM records
-                WHERE bin_id = :bin_id AND timestamp >= :since
-                GROUP BY day
+                WITH readings AS (
+                    SELECT (timestamp AT TIME ZONE :tz)::date AS day,
+                        avg(temperature) AS avg_temp,
+                        max(temperature) AS max_temp,
+                        avg(moisture_percent) AS avg_moisture,
+                        avg(o2_percent) AS avg_o2,
+                        avg(co2_percent) AS avg_co2,
+                        avg(nh3_ratio) AS avg_nh3
+                    FROM records
+                    WHERE bin_id = :bin_id AND timestamp >= :since
+                    GROUP BY day
+                ), stages AS (
+                    SELECT (hour AT TIME ZONE :tz)::date AS day, mode() WITHIN GROUP (ORDER BY stage) AS stage
+                    FROM bin_stages
+                    WHERE bin_id = :bin_id AND hour >= :since
+                    GROUP BY day
+                )
+                SELECT * FROM readings LEFT JOIN stages USING (day)
                 ORDER BY day
                 """
             ),
             {"bin_id":bin_id, "since": since, "tz": SITE_TIMEZONE}
         ).all()
     return [DailyReading(**row._mapping) for row in results]
+
+
+def _slots(db, bin_id, since):
+    """The bin's readings since `since`, averaged per 30 minutes, oldest first.
+
+    features.py averages readings onto a 30-minute grid first, so do that
+    here: a device sending every 30 s would otherwise mean 170,000 rows.
+    """
+    return db.execute(
+        text(
+            """
+            SELECT date_bin('30 minutes', timestamp, TIMESTAMPTZ '2000-01-01') AS slot,
+                avg(temperature) AS temperature,
+                avg(moisture_percent) AS moisture_percent,
+                min(timestamp) AS first_at,
+                max(timestamp) AS last_at
+            FROM records
+            WHERE bin_id = :bin_id AND timestamp >= :since
+            GROUP BY slot
+            ORDER BY slot
+            """
+        ),
+        {"bin_id": bin_id, "since": since}
+    ).all()
+
+
+def save_stages(bin_id):
+    """Save the model's stage for each new hour of the bin's readings (bin_stages, migration 007).
+
+    POST /records calls this after storing readings. It does nothing if the
+    model isn't installed, the bin has under 24 h of readings, or the newest
+    saved hour is under an hour behind the newest reading. Hours without
+    readings (a sensor that was down) aren't saved, and saved hours are never
+    overwritten, so each keeps the prediction made at the time.
+    """
+    if stage_model.bundle is None:
+        return
+    since = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=60)
+    with db_engine.begin() as db:
+        slots = _slots(db, bin_id, since)
+        if not slots or slots[-1].last_at - slots[0].first_at < datetime.timedelta(hours=stage_model.MIN_HISTORY_HOURS):
+            return
+        last_saved = db.execute(text("SELECT max(hour) FROM bin_stages WHERE bin_id = :bin_id"), {"bin_id": bin_id}).scalar()
+        if last_saved and slots[-1].last_at - last_saved < datetime.timedelta(hours=1):
+            return
+        # the model predicts every hour, gaps included; keep the hours that had readings
+        with_readings = {row.slot for row in slots}
+        half_hour = datetime.timedelta(minutes=30)
+        rows = [
+            {"bin_id": bin_id, "hour": hour, "stage_id": stage_id, "stage": stage, "confidence": confidence}
+            for hour, stage_id, stage, confidence in stage_model.hourly([(r.slot, r.temperature, r.moisture_percent) for r in slots])
+            if (last_saved is None or hour > last_saved) and (hour in with_readings or hour + half_hour in with_readings)
+        ]
+        if rows:
+            db.execute(
+                text(
+                    """
+                    INSERT INTO bin_stages (bin_id, hour, stage_id, stage, confidence)
+                    VALUES (:bin_id, :hour, :stage_id, :stage, :confidence)
+                    ON CONFLICT DO NOTHING
+                    """
+                ),
+                rows,
+            )
 
 
 @router.get("/{bin_id}/stage", response_model=StageEstimate)
@@ -240,24 +314,7 @@ def get_bin_stage(bin_id: uuid.UUID, days: Annotated[int, Query(ge=1, le=365)] =
         if stage_model.bundle is None:
             raise HTTPException(status_code=503, detail="The stage model isn't available on this server.")
         since = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
-        # features.py averages readings onto a 30-minute grid first, so do that
-        # here: a device sending every 30 s would otherwise mean 170,000 rows
-        slots = db.execute(
-            text(
-                """
-                SELECT date_bin('30 minutes', timestamp, TIMESTAMPTZ '2000-01-01') AS slot,
-                    avg(temperature) AS temperature,
-                    avg(moisture_percent) AS moisture_percent,
-                    min(timestamp) AS first_at,
-                    max(timestamp) AS last_at
-                FROM records
-                WHERE bin_id = :bin_id AND timestamp >= :since
-                GROUP BY slot
-                ORDER BY slot
-                """
-            ),
-            {"bin_id": bin_id, "since": since}
-        ).all()
+        slots = _slots(db, bin_id, since)
 
     if not slots:
         return StageEstimate(stage_id=None, stage=None, raw_stage=None, confidence=None, probabilities={},

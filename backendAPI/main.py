@@ -1,5 +1,6 @@
 import datetime
 import hashlib
+import logging
 
 from fastapi import Depends, FastAPI, HTTPException, Security
 from fastapi.security import APIKeyHeader
@@ -9,6 +10,9 @@ from sqlalchemy import text
 from database import db_engine
 from routers import alerts, auth, bins, devices, pairing, public, research_keys, research_data
 from routers.alerts import record_alerts
+from routers.bins import save_stages
+
+log = logging.getLogger(__name__)
 
 
 class Record(BaseModel):
@@ -91,4 +95,11 @@ def send_records (readings: list[Record], device_id: str = Depends(authenticatio
                             :moisture_percent, :o2_percent, :co2_percent, :nh3_ratio)
                             """),
                 [{"device_id": device_id, "bin_id": bin_id, **reading.model_dump()} for reading in readings])
+
+    if readings:
+        # after the readings are stored: a model problem must never fail an upload
+        try:
+            save_stages(bin_id)
+        except Exception:
+            log.exception("couldn't save stages for bin %s", bin_id)
     return readings

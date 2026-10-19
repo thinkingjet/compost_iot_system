@@ -79,7 +79,10 @@ checks (migration, item, ok) AS (
             EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_role_check')),
 
         ('006', 'table research_apikeys exists',
-            to_regclass('public.research_apikeys') IS NOT NULL)
+            to_regclass('public.research_apikeys') IS NOT NULL),
+
+        ('007', 'table bin_stages exists',
+            to_regclass('public.bin_stages') IS NOT NULL)
 )
 SELECT migration, item, CASE WHEN ok THEN 'applied' ELSE 'MISSING' END AS status
 FROM checks

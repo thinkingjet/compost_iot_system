@@ -9,6 +9,8 @@ prefix and removed by `clean_devices`.
 import datetime
 import secrets
 
+from unittest.mock import ANY
+
 import pytest
 from sqlalchemy import text
 
@@ -244,9 +246,9 @@ def test_history_is_one_row_per_day_with_averages_and_peak(client, account):
     # day 2's readings use reading()'s defaults for everything but temperature
     assert response.json() == [
         {"day": day1.date().isoformat(), "avg_temp": 45.0, "max_temp": 50.0, "avg_moisture": 52.0,
-         "avg_o2": 7.0, "avg_co2": 3.0, "avg_nh3": pytest.approx(0.3)},
+         "avg_o2": 7.0, "avg_co2": 3.0, "avg_nh3": pytest.approx(0.3), "stage": ANY},
         {"day": day2.date().isoformat(), "avg_temp": pytest.approx(66.0), "max_temp": 74.0, "avg_moisture": 52.0,
-         "avg_o2": 6.5, "avg_co2": pytest.approx(4.2), "avg_nh3": pytest.approx(0.4)},
+         "avg_o2": 6.5, "avg_co2": pytest.approx(4.2), "avg_nh3": pytest.approx(0.4), "stage": ANY},
     ]
 
 

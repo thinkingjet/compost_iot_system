@@ -22,6 +22,7 @@ PostgreSQL 16. Only the API (`backendAPI/`) connects to it. The dashboard and th
 | 004 | `migrations/004_device_registration.sql` | Devices registered without pairing: `devices.mac` becomes optional, since nothing is learnt from the hardware; `devices.registration` (`pairing` or `manual`) records how a device joined, and checks keep it `manual` exactly when there is no MAC. Only `manual` devices may get a new API key | yes: fills in `registration` for existing devices from `mac` |
 | 005 | `migrations/005_user_roles.sql` | `users.role`: `owner` (has bins and devices) or `researcher` (reads the public research data), one per account. Defaults to `owner` | yes: every existing account becomes an `owner` |
 | 006 | `migrations/006_research_keys.sql` | New `research_apikeys` table: a researcher's API keys for the research endpoints (hash only, a name each). Deleted with the account | no |
+| 007 | `migrations/007_bin_stages.sql` | New `bin_stages` table: the stage the model predicted for each bin, one row per hour that had readings, saved when readings arrive and never overwritten. Deleted with the bin | no |
 
 Accounts that existed before 002 get the time the migration ran as their `created_at`, because their real sign-up time was never recorded.
 

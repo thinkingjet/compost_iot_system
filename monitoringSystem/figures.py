@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import plotly.graph_objects as go
 from data import HISTORICAL, TELEMETRY
@@ -117,6 +117,11 @@ def readings_figure(readings, device_names, sensors=CLIMATE_SENSORS):
     return figure
 
 
+# a colour per compost stage, for the day bands on the history chart
+STAGE_COLORS = {"Early Mesophilic": "#fab005", "Active Thermophilic": "#fd7e14", "Peak Decomposition": "#fa5252",
+                "Cooling": "#4dabf7", "Maturation": "#40c057"}
+
+
 def phase_history_figure(history):
     """Daily average and peak temperature from GET /bins/{id}/history."""
     color = SENSOR_COLORS["temperature"]
@@ -152,6 +157,15 @@ def phase_history_figure(history):
         annotation_position="top left",
         annotation_font={"color": "#fa5252", "size": 10},
     )
+    # each day's stage (the model's, saved hourly) as a band behind it, and once in the legend
+    for day in history:
+        if day.get("stage"):
+            middle = datetime.fromisoformat(day["day"])
+            figure.add_vrect(x0=middle - timedelta(hours=12), x1=middle + timedelta(hours=12), line_width=0, layer="below",
+                             fillcolor=STAGE_COLORS.get(day["stage"], "#868e96"), opacity=0.15)
+    for stage in dict.fromkeys(day.get("stage") for day in history if day.get("stage")):
+        figure.add_trace(go.Scatter(x=[None], y=[None], mode="markers", name=stage,
+                                    marker={"symbol": "square", "size": 10, "color": STAGE_COLORS.get(stage, "#868e96"), "opacity": 0.4}))
     figure.update_layout(height=260, legend={"orientation": "h", "x": 0, "y": 1.14})
     return figure
 
