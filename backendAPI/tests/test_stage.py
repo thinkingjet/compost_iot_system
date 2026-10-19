@@ -172,3 +172,55 @@ def test_without_the_model_the_stage_is_unavailable(client, account, monkeypatch
     assert response.json() == {"detail": "The stage model isn't available on this server."}
     # someone else's or a missing bin is still a 404, not a hint that it exists
     assert client.get(f"/bins/{RANDOM_ID}/stage", headers=account["headers"]).status_code == 404
+
+
+# ------------------------------------------------- saved stages (bin_stages) ---
+
+def _saved(bin_id):
+    with db_engine.connect() as db:
+        return db.execute(text("SELECT hour, stage FROM bin_stages WHERE bin_id = :id ORDER BY hour"), {"id": bin_id}).all()
+
+
+def test_an_upload_saves_a_stage_per_hour_and_history_shows_it(client, account, model):
+    bin_id, readings = _pile(client, account["headers"], _warm_up, hours=48)
+    saved = _saved(bin_id)
+    assert 40 <= len(saved) <= 49
+    assert {row.stage for row in saved} <= set(STAGES)
+    history = client.get(f"/bins/{bin_id}/history", headers=account["headers"]).json()
+    assert history[-1]["stage"] in STAGES
+
+
+def test_under_a_day_of_readings_saves_no_stage(client, account, model):
+    bin_id, _ = _pile(client, account["headers"], _warm_up, hours=12)
+    assert _saved(bin_id) == []
+
+
+def test_saved_hours_are_kept_and_saving_is_at_most_hourly(client, account, model):
+    bin_id, readings = _pile(client, account["headers"], _warm_up, hours=48)
+    before = _saved(bin_id)
+    api_key = _device(client, account["headers"], bin_id)
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    assert client.post("/records", json=[reading(timestamp=now, temperature=20.0)], headers={"x-key": api_key}).status_code == 200
+    assert _saved(bin_id) == before
+
+
+def test_hours_without_readings_are_not_saved(client, account, model):
+    bin_id = _bin(client, account["headers"])
+    api_key = _device(client, account["headers"], bin_id)
+    last = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=5)
+    # 72 hours, with the sensor down from hour 30 to hour 50
+    readings = [reading(timestamp=(last - datetime.timedelta(hours=72 - h / 2)).isoformat(), temperature=_warm_up(h / 2), moisture_percent=55.0)
+                for h in range(145) if not 60 <= h < 100]
+    assert client.post("/records", json=readings, headers={"x-key": api_key}).status_code == 200
+    gap_start, gap_end = last - datetime.timedelta(hours=41), last - datetime.timedelta(hours=23)
+    saved = _saved(bin_id)
+    assert saved and not [row for row in saved if gap_start < row.hour < gap_end]
+
+
+def test_a_model_error_does_not_fail_the_upload(client, account, model, monkeypatch):
+    def broken(readings):
+        raise RuntimeError("model broke")
+    monkeypatch.setattr(stage_model, "hourly", broken)
+    bin_id, readings = _pile(client, account["headers"], _warm_up, hours=48)
+    assert _saved(bin_id) == []
+    assert len(client.get(f"/bins/{bin_id}/records?hours=72", headers=account["headers"]).json()) == len(readings)

@@ -214,6 +214,15 @@ def estimate(readings):
     }
 
 
+def hourly(readings):
+    """Every hour of predict.py's output for the same readings as estimate():
+    (hour, stage_id, stage, confidence) tuples, oldest first, using the filtered stage."""
+    frame = pd.DataFrame(readings, columns=["timestamp", "temperature_c", "moisture_pct"])
+    out = predict.predict_readings(bundle, frame)
+    return [(pd.Timestamp(row.timestamp).to_pydatetime(), int(row.stage_id_filtered), row.stage_filtered, float(row.confidence))
+            for row in out.itertuples()]
+
+
 def export_params(loaded, path):
     """Writes the bundle's parameters as a STAGE_MODEL_PARAMS file to start from."""
     params = {key: loaded[key] for key in PARAM_KEYS}
