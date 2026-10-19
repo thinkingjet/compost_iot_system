@@ -49,7 +49,7 @@ All ten diagrams, with numbered steps and notes, are in [`docs/diagrams`](docs/d
 
 | System | What it does | Built with | Folder |
 |---|---|---|---|
-| **API** | Receives readings, runs the alert rules, estimates each bin's composting stage, manages accounts, pairing, bins and devices, and serves research data. The only path to the database | FastAPI, SQLAlchemy Core, PyJWT, pwdlib (argon2) | [`backendAPI/`](backendAPI/README.md) |
+| **API** | Receives readings, runs the alert rules, estimates each bin's composting stage, manages accounts, pairing, bins and devices, and serves research data and the website's public figures. The only path to the database | FastAPI, SQLAlchemy Core, PyJWT, pwdlib (argon2) | [`backendAPI/`](backendAPI/README.md) |
 | **Dashboard** | Sign-up and sign-in, then separate pages for owners (bins, devices, alerts) and researchers (API keys, Explore data, docs) | Dash, dash-mantine-components, Plotly | [`monitoringSystem/`](monitoringSystem/README.md) |
 | **Website** | The public site: landing page, open data, quickstart, API reference and security pages | Plain HTML, CSS and JavaScript | [`website/`](website/README.md) |
 | **Emulator** | One emulated device with its own web page. It pairs with a dashboard code, models a live compost pile and uploads a reading every 30 seconds | Python standard library, Docker | [`emulator/`](emulator/README.md) |
@@ -112,7 +112,7 @@ The same database reaches each audience through its own filter.
 
 - **Owners** see every detail of their own bins: exact readings per device, alerts and a daily history.
 - **Researchers** get one row per country, for each UTC day (Daily) or for the whole chosen period (Overall), up to 366 days. Each row has bin and reading counts and the average, minimum, maximum and standard deviation of each sensor; Alerts gives counts and the average hours to resolve. Names, emails, locations, MACs and database IDs are never selected, and bins without a country are left out.
-- **The public** sees totals only, on the website: how many bins, countries and active devices, bins per country, and 30 days of daily average temperature and moisture.
+- **The public** sees totals only, on the website, from the API's keyless `/public` endpoints: how many bins, countries and active devices, bins per country, and 30 days of daily average temperature and moisture.
 
 ## Data model
 
