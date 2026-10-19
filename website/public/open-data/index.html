@@ -47,7 +47,7 @@
 <div class="hero__copy">
 <span class="eyebrow">Open data for research</span>
 <h1 class="display-1">Compost piles, country by country.</h1>
-<p class="lead">Readings from working compost bins, summed up per country for each day or for a whole period: temperature, moisture, oxygen, CO₂ and ammonia, with how often each alert happens. Free for research with a researcher account and an API key.</p>
+<p class="lead">Readings from the bins on CompostIQ, summed up per country for each day or for a whole period: temperature, moisture, oxygen, CO₂ and ammonia, with how often each alert happens. Available to anyone with a free researcher account and an API key.</p>
 <div class="cluster hero__actions">
 <a class="btn btn--primary" href="/docs/">Get started</a>
 <a class="btn btn--ghost" href="/docs/api/">API reference</a>
@@ -80,14 +80,13 @@
 <section id="downloads" class="section section--no-top">
 <div class="wrap stack stack--sm">
 <div class="card glance">
-<div class="glance__item"><div class="glance__value" data-stat="bins">–</div><div class="glance__label">Bins</div></div>
+<div class="glance__item"><div class="glance__value" data-stat="bins">–</div><div class="glance__label">Bins reporting</div></div>
 <div class="glance__item"><div class="glance__value" data-stat="countries">–</div><div class="glance__label">Countries</div></div>
-<div class="glance__item"><div class="glance__value" data-stat="methods">–</div><div class="glance__label">Methods</div></div>
 <div class="glance__item"><div class="glance__value" data-stat="readings_total">–</div><div class="glance__label">Readings</div></div>
 <div class="glance__item"><div class="glance__value glance__value--sm" data-stat="period">–</div><div class="glance__label">Period covered</div></div>
 </div>
 <div class="note-row">
-<p data-figures-note>Figures come from the CompostIQ API.</p>
+<p data-figures-note>Live figures from the CompostIQ API.</p>
 <p>Every research endpoint also answers in CSV: add <code class="ic">format=csv</code>. · <a href="/docs/api/#changelog">Changelog</a></p>
 </div>
 </div>
@@ -128,7 +127,7 @@
 <tr><td><code>type</code></td><td>enum</td><td><code>too_hot</code>, <code>too_dry</code>, <code>too_wet</code>, <code>low_oxygen</code> or <code>high_co2</code>.</td></tr>
 <tr><td><code>alert_count</code></td><td>integer</td><td>How many alerts of this type were raised in the window.</td></tr>
 <tr><td><code>bin_count</code></td><td>integer</td><td>How many bins raised them.</td></tr>
-<tr><td><code>avg_hours_to_resolve</code></td><td>number · hours</td><td>How long they took to clear, on average. Alerts still open are left out of it.</td></tr>
+<tr><td><code>avg_hours_to_resolve</code></td><td>number · hours</td><td>How long they took to clear, on average. Alerts still open are left out of it, and it is <code>null</code> while none has cleared.</td></tr>
 </tbody>
 </table>
 </div>
@@ -181,7 +180,8 @@
 <div class="tiles tiles--sm">
 <div class="caveat"><h3>Averages hide spread</h3><p>Every sensor comes with its minimum, maximum and standard deviation (<code>_min</code>, <code>_max</code>, <code>_sd</code>). Check them before comparing averages.</p></div>
 <div class="caveat"><h3>Ammonia is relative</h3><p><code>nh3_ratio</code> runs from 0 to 1. It shows when ammonia rises and falls, not how much is present.</p></div>
-<div class="caveat"><h3>A tropical baseline</h3><p>The pilot site sits at 24–32 °C ambient, so piles start near 28 °C and cool back to it. Expect higher floors than temperate data.</p></div>
+<div class="caveat"><h3>Modelled, not measured</h3><p>Today's readings come from the CompostIQ emulator and simulator, which model piles from the stage ranges below. Treat them as modelled data until physical sensors report.</p></div>
+<div class="caveat"><h3>A tropical baseline</h3><p>The models use a 28 °C ambient, like the pilot site in Mataram, so piles start near 28 °C and cool back to it. Expect higher floors than temperate data.</p></div>
 <div class="caveat"><h3>Days are UTC</h3><p>Daily rows follow UTC days. The pilot site is at UTC+8, so one local day spans two rows.</p></div>
 </div>
 </div>
@@ -194,7 +194,7 @@
 <span class="eyebrow">Phase definitions</span>
 <h2 class="display-2">The ranges behind each stage.</h2>
 </div>
-<p class="split__aside split__aside--narrow text-2">The ranges CompostIQ's simulated piles follow (<code class="ic">simulator/composting_stages.py</code>). Peak decomposition starts once the core has held 55 °C for 6 hours.</p>
+<p class="split__aside split__aside--narrow text-2">The ranges the emulator and simulator model piles from, and the stage model was trained on (<code class="ic">simulator/composting_stages.py</code>). Peak decomposition starts once the core has held 55 °C for 6 hours.</p>
 </div>
 <div class="tbl-box">
 <table class="tbl tbl--wide">
@@ -214,11 +214,10 @@
 <section id="cite" class="section section--no-top">
 <div class="wrap tiles tiles--lg">
 <div class="card card--pad stack">
-<span class="eyebrow">Use and cite</span>
-<h2 class="display-3">Free to use with credit.</h2>
-<p class="text-2">The dataset is published under [LICENCE]. Please cite it like this:</p>
-<p class="cite">CompostIQ ([YEAR]). <em>CompostIQ open compost telemetry</em>, release [VERSION]. https://compostiq.win/open-data/</p>
-<p class="small text-2">Published something with it? Tell us at [CONTACT EMAIL] and we'll link to it.</p>
+<span class="eyebrow">Cite</span>
+<h2 class="display-3">Using the figures? Cite them.</h2>
+<p class="text-2">The figures change as bins report, so give the date you fetched them:</p>
+<p class="cite">CompostIQ (2026). <em>CompostIQ research API: country aggregates of compost bin readings</em>. https://compostiq.win/open-data/ (retrieved on the date you fetched them)</p>
 </div>
 <div class="panel-green">
 <div class="stack stack--sm">
@@ -240,7 +239,7 @@
 <div class="footer-top">
 <div class="footer-brand">
 <span class="footer-brand__name">Compost<span>IQ</span></span>
-<p>Sensors, alerts and open data for better compost.</p>
+<p>Compost monitoring, alerts and open data.</p>
 </div>
 <nav class="footer-col" aria-label="Product">
 <span class="footer-col__title">Product</span>
@@ -262,7 +261,6 @@
 </div>
 <div class="footer-bottom">
 <span>© 2026 CompostIQ · An RMIT capstone project</span>
-<span>Open data licence: [LICENCE]</span>
 </div>
 </div>
 </footer>

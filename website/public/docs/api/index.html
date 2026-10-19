@@ -207,22 +207,34 @@ head(daily[, c(<span class="t-s">"day"</span>, <span class="t-s">"temperature_c"
 
 <section id="other-endpoints" class="stack">
 <h2 class="title-lg">Other endpoints</h2>
-<p class="small">The research endpoints take the same key. <code>/research/overview</code> and <code>/research/alerts</code> take the same parameters and return the same envelope.</p>
+<p class="small">The research endpoints take the same key. <code>/research/overview</code> and <code>/research/alerts</code> take the same parameters and return the same envelope. The public endpoints need no key.</p>
 <div class="tiles tiles--tight">
 <div id="research-overview" class="card ep"><span class="mono"><span class="verb">GET</span> /research/overview</span><span>One row per country for the whole window: bin and reading counts, and each sensor's average, minimum, maximum and standard deviation.</span></div>
-<div id="research-alerts" class="card ep"><span class="mono"><span class="verb">GET</span> /research/alerts</span><span>One row per country and alert type raised in the window: how many alerts, in how many bins, and the average hours until they resolved.</span></div>
+<div id="research-alerts" class="card ep"><span class="mono"><span class="verb">GET</span> /research/alerts</span><span>One row per country and alert type raised in the window: how many alerts, in how many bins, and the average hours until they resolved (<code>null</code> while none has).</span></div>
 <div id="research-countries" class="card ep"><span class="mono"><span class="verb">GET</span> /research/countries</span><span>Every country with readings: bins, readings, and the first and last reading. Covers all time and takes no parameters.</span></div>
-<a id="public-stats" class="card card-link ep" href="https://api.compostiq.win/public/stats"><span class="mono"><span class="verb">GET</span> /public/stats</span><span>Totals: bins, countries, active devices, readings in the last 24 hours.</span></a>
-<a id="public-bins-by-country" class="card card-link ep" href="https://api.compostiq.win/public/bins-by-country"><span class="mono"><span class="verb">GET</span> /public/bins-by-country</span><span>Number of bins in each country.</span></a>
-<a id="public-trends" class="card card-link ep" href="https://api.compostiq.win/public/trends"><span class="mono"><span class="verb">GET</span> /public/trends</span><span>30-day daily means of temperature and moisture across all bins.</span></a>
+<a id="public-stats" class="card card-link ep" href="https://api.compostiq.win/public/stats"><span class="mono"><span class="verb">GET</span> /public/stats</span><span>No key. Totals across every bin: bins and countries reporting, devices online now, and readings.</span></a>
+<a id="public-bins-by-country" class="card card-link ep" href="https://api.compostiq.win/public/bins-by-country"><span class="mono"><span class="verb">GET</span> /public/bins-by-country</span><span>No key. How many bins have reported from each country.</span></a>
+<a id="public-trends" class="card card-link ep" href="https://api.compostiq.win/public/trends"><span class="mono"><span class="verb">GET</span> /public/trends</span><span>No key. The daily average temperature and moisture across every bin, for the last 30 UTC days.</span></a>
 <a id="openapi" class="card card-link ep" href="https://api.compostiq.win/openapi.json"><span class="mono"><span class="verb">GET</span> /openapi.json</span><span>The machine-readable spec, for code generators and Postman.</span></a>
+</div>
+</section>
+
+<section id="public" class="stack">
+<h2 class="title-lg">Public figures</h2>
+<p class="small">The three <code>/public</code> endpoints feed the figures on this website. They need no key, count only bins that have sent at least one reading, and give nothing finer than a country. Each answer is reused for up to a minute.</p>
+<div class="defs">
+<div class="def"><span class="def__k"><code>/public/stats</code><span class="def__type">object</span></span><span class="def__v"><code>bins</code> and <code>countries</code> reporting; <code>active_devices</code>, the devices in a bin heard from in the last 10 minutes; <code>readings_total</code> and <code>readings_24h</code>; <code>first_reading_at</code> and <code>last_reading_at</code>; and <code>updated_at</code>, when the figures were worked out.</span></div>
+<div class="def"><span class="def__k"><code>/public/bins-by-country</code><span class="def__type">array</span></span><span class="def__v">One <code>{country_code, bins}</code> per country, most bins first. Bins without a country aren't listed.</span></div>
+<div class="def"><span class="def__k"><code>/public/trends</code><span class="def__type">object</span></span><span class="def__v"><code>days</code>: one <code>{date, temperature_c, moisture_percent}</code> per UTC day for the last 30 days, today included. A day without readings has <code>null</code> values.</span></div>
 </div>
 </section>
 
 <section id="changelog" class="stack">
 <h2 class="title-lg">Changelog</h2>
 <div class="defs">
-<div class="def"><span class="def__k def__k--narrow mono">[DATE] · v1</span><span class="def__v">First public release of the <code>/public</code> and <code>/research</code> endpoints.</span></div>
+<div class="def"><span class="def__k def__k--narrow mono">19 Oct 2026</span><span class="def__v">Added <code>/public/stats</code>, <code>/public/bins-by-country</code> and <code>/public/trends</code>.</span></div>
+<div class="def"><span class="def__k def__k--narrow mono">19 Oct 2026</span><span class="def__v">Added <code>/research/alerts</code>, <code>/research/countries</code>, each sensor's minimum, maximum and standard deviation, and <code>format=csv</code>.</span></div>
+<div class="def"><span class="def__k def__k--narrow mono">16 Oct 2026</span><span class="def__v">Added <code>/research/daily</code> and <code>/research/overview</code>, read with a research key.</span></div>
 </div>
 </section>
 </main>

@@ -2,9 +2,8 @@
 //
 //  1. Live figures: the stat tiles, the two 30-day charts and the country list
 //     on the home and open data pages. They come from the API's public
-//     endpoints, which NGINX passes through at /api/public/. Until those
-//     endpoints exist, or while the API is down, the pages show the preview
-//     snapshot in /assets/preview.json and say so.
+//     endpoints, which NGINX passes through at /api/public/. If the API can't
+//     be reached, the dashes stay and the pages say the figures are unavailable.
 //  2. Code samples: cURL/Python/R tabs and a Copy button.
 //  3. Local preview: dashboard links point at the dashboard on this machine.
 //
@@ -22,16 +21,12 @@ async function getJSON(url) {
 }
 
 async function loadFigures() {
-  try {
-    const [stats, binsByCountry, trends] = await Promise.all([
-      getJSON("/api/public/stats"),
-      getJSON("/api/public/bins-by-country"),
-      getJSON("/api/public/trends"),
-    ]);
-    return { stats, bins_by_country: binsByCountry, trends, preview: false };
-  } catch {
-    return { ...(await getJSON("/assets/preview.json")), preview: true };
-  }
+  const [stats, binsByCountry, trends] = await Promise.all([
+    getJSON("/api/public/stats"),
+    getJSON("/api/public/bins-by-country"),
+    getJSON("/api/public/trends"),
+  ]);
+  return { stats, binsByCountry, trends };
 }
 
 // Dates read "18 Aug", the same in every browser (built-in locales disagree on "Sep"/"Sept").
@@ -42,21 +37,25 @@ const dayLabel = (iso) => {
 };
 const fullDate = (iso) => `${dayLabel(iso)} ${new Date(iso).getUTCFullYear()}`;
 const number = (value) => Number(value).toLocaleString("en");
+// "ID" -> "Indonesia", by the browser, so the API only has to send the code
+const regions = typeof Intl.DisplayNames === "function" ? new Intl.DisplayNames(["en"], { type: "region" }) : null;
+const countryName = (code) => {
+  try {
+    return regions?.of(code) ?? code;
+  } catch {
+    return code;
+  }
+};
 const short = (value) => String(Math.round(value * 10) / 10);
 
-// A daily line chart as SVG: gridlines, an optional target band or reference
-// line, the line itself, and a hover tooltip (the browser's own) per day.
-function lineChart(days, values, { series, unit, pointUnit, min, max, ticks, label, threshold, band }) {
+// A daily line chart as SVG: gridlines, an optional reference line, the line
+// itself, and a hover tooltip (the browser's own) per day.
+function lineChart(days, values, { series, unit, pointUnit, min, max, ticks, label, threshold }) {
   const W = 600, H = 180;
   const x = (i) => (i * W) / Math.max(days.length - 1, 1);
   const y = (v) => H - ((v - min) / (max - min)) * H;
   const f = (n) => n.toFixed(1);
   let svg = `<g transform="translate(44,14)">`;
-  if (band) {
-    const [low, high, text] = band;
-    svg += `<rect class="chart__band" x="0" y="${f(y(high))}" width="${W}" height="${f(y(low) - y(high))}"/>`;
-    svg += `<text class="chart__band-label" x="${W}" y="${f(y(high) - 6)}" text-anchor="end">${text}</text>`;
-  }
   for (const tick of ticks) {
     svg += `<line class="chart__grid" x1="0" y1="${f(y(tick))}" x2="${W}" y2="${f(y(tick))}"/>`;
     svg += `<text x="-10" y="${f(y(tick) + 4)}" text-anchor="end">${tick}${unit}</text>`;
@@ -95,19 +94,19 @@ function drawCharts(trendDays) {
   if (days.length < 2) return;
   const dates = days.map((d) => d.date);
   const temps = days.map((d) => d.temperature_c);
-  const moist = days.map((d) => d.moisture_pct);
+  const moist = days.map((d) => d.moisture_percent);
   const known = (list) => list.filter((v) => v != null);
+  if (!known(temps).length) return; // no readings in the last 30 days: no chart
   const span = `${dayLabel(dates[0])} to ${dayLabel(dates[dates.length - 1])}`;
   const charts = {
     temperature: lineChart(dates, temps, {
       series: "temp", unit: "°", pointUnit: "°C", min: 20, max: 70, ticks: [30, 50, 70],
-      threshold: [55, "55 °C pathogen kill"],
+      threshold: [55, "55 °C pathogen-kill target"],
       label: `Daily mean temperature, ${span}. It ranges from ${Math.round(Math.min(...known(temps)))} to ${Math.round(Math.max(...known(temps)))} °C.`,
     }),
     moisture: lineChart(dates, moist, {
       series: "moist", unit: "%", pointUnit: "%", min: 30, max: 70, ticks: [40, 55, 70],
-      band: [40, 65, "Target 40–65 %"],
-      label: `Daily mean moisture, ${span}. It ranges from ${Math.round(Math.min(...known(moist)))} to ${Math.round(Math.max(...known(moist)))} %, against a 40 to 65 % target.`,
+      label: `Daily mean moisture, ${span}. It ranges from ${Math.round(Math.min(...known(moist)))} to ${Math.round(Math.max(...known(moist)))} %.`,
     }),
   };
   document.querySelectorAll("[data-chart]").forEach((slot) => {
@@ -121,13 +120,17 @@ function drawCharts(trendDays) {
 function listCountries(countries) {
   const most = Math.max(1, ...countries.map((c) => c.bins));
   document.querySelectorAll("[data-countries]").forEach((list) => {
+    if (!countries.length) {
+      list.innerHTML = `<li class="country__row">No bin with a country has sent readings yet.</li>`;
+      return;
+    }
     list.replaceChildren(...countries.map((c) => {
       const item = document.createElement("li");
       item.className = "country";
       const row = document.createElement("div");
       row.className = "country__row";
       const name = document.createElement("span");
-      name.textContent = c.name || c.country;
+      name.textContent = countryName(c.country_code);
       const count = document.createElement("span");
       count.className = "country__count";
       count.textContent = `${c.bins} ${c.bins === 1 ? "bin" : "bins"}`;
@@ -144,11 +147,14 @@ function listCountries(countries) {
 
 async function showFigures() {
   if (!document.querySelector("[data-stat], [data-chart], [data-countries]")) return;
+  const notes = document.querySelectorAll("[data-figures-note]");
   let figures;
   try {
     figures = await loadFigures();
   } catch {
-    return; // neither the API nor the preview answered: the dashes stay
+    // the API didn't answer: the dashes stay
+    notes.forEach((note) => { note.textContent = "Live figures are unavailable right now. Try again later."; });
+    return;
   }
   const { stats } = figures;
   const values = {
@@ -159,12 +165,10 @@ async function showFigures() {
     const value = values[el.dataset.stat];
     if (value != null) el.textContent = typeof value === "number" ? number(value) : value;
   });
-  drawCharts(figures.trends.days ?? figures.trends);
-  listCountries(figures.bins_by_country);
-  document.querySelectorAll("[data-figures-note]").forEach((note) => {
-    note.textContent = figures.preview
-      ? "Preview figures from the simulated pilot dataset, until the public API is live."
-      : `Updated ${fullDate(stats.updated_at)}, ${new Date(stats.updated_at).toISOString().slice(11, 16)} UTC.`;
+  drawCharts(figures.trends.days);
+  listCountries(figures.binsByCountry);
+  notes.forEach((note) => {
+    note.textContent = `Live from the CompostIQ API · updated ${fullDate(stats.updated_at)}, ${new Date(stats.updated_at).toISOString().slice(11, 16)} UTC.`;
   });
 }
 

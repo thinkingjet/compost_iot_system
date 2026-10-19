@@ -40,6 +40,10 @@ uv run uvicorn main:app --reload --port 8000
 | `routers/pairing.py` | pairing codes: issue, check, and redeem one for a device key |
 | `routers/devices.py` | the user's devices: register without pairing, list, set up (name + bin), new key, unpair |
 | `routers/bins.py` | the user's bins: list, create, read, readings, daily history, stage estimate |
+| `routers/alerts.py` | the alert rules, run on each upload to `POST /records`, and `GET /alerts` |
+| `routers/research_keys.py` | a researcher's API keys, and the `x-research-key` check |
+| `routers/research_data.py` | the anonymised country aggregates under `/research/*` |
+| `routers/public.py` | the website's figures under `/public/*`: no key, totals and countries only |
 | `stage_model.py` | loads the compost stage classifier once at startup (from the settings above), checks it, and runs it on a bin's readings |
 | `database.py` | the one SQLAlchemy engine everything shares |
 | `config.py` | settings, from the environment or `.env` |
@@ -51,6 +55,8 @@ uv run uvicorn main:app --reload --port 8000
 | A device | `x-key: <api key>` | `POST /records` only |
 | A device, before it has a key | a pairing code | `POST /pairing/redeem` only |
 | A user | `Authorization: Bearer <JWT>` | `/auth/*`; and, for owner accounts only, `/pairing/codes`, `/devices`, `/bins`, `/alerts` (their own only) |
+| A researcher's script | `x-research-key: <research key>` | `/research/overview`, `/research/daily`, `/research/alerts`, `/research/countries` |
+| Anyone | nothing | `/public/stats`, `/public/bins-by-country`, `/public/trends` |
 
 They are separate dependencies. A user token cannot write readings, and a device key cannot reach a user endpoint.
 
@@ -171,14 +177,33 @@ Everything else is shared with paired devices: `DELETE /devices/{id}` revokes th
 
 ## Research data API
 
-A researcher selects the **researcher** account type at registration, then creates a key on the dashboard's **API keys** page. Send that key as `x-research-key` to `GET /research/overview` or `GET /research/daily`. Owner tokens and device keys cannot call these endpoints. The signed-in dashboard's **Explore data** page uses the equivalent `/research/preview/overview` and `/research/preview/daily` routes with the researcher's Bearer token.
+A researcher selects the **researcher** account type at registration, then creates a key on the dashboard's **API keys** page (up to five). Send that key as `x-research-key`. Owner tokens and device keys cannot call these endpoints. The signed-in dashboard's **Explore data** page uses the equivalent `/research/preview/*` routes with the researcher's Bearer token.
 
-Both data routes accept optional `country_code` (two-letter ISO code), `start` and `end` (ISO 8601 timestamps with timezone). The default window is the last 30 days; the maximum is 366 days. The end is exclusive. Results group readings by country, or by country and UTC day. They include the contributing bin and reading counts and the mean of each sensor value. Names, locations, account IDs, device IDs, bin IDs and individual readings are never returned. Groups appear whenever they contain readings, regardless of the number of owners.
+| Endpoint | Returns |
+|---|---|
+| `GET /research/daily` | one row per country per UTC day |
+| `GET /research/overview` | one row per country for the whole window |
+| `GET /research/alerts` | one row per country and alert type: how many, in how many bins, average hours to resolve |
+| `GET /research/countries` | every country with readings: bins, readings, first and last reading. No parameters |
+
+The first three accept optional `country_code` (two-letter ISO code), `start` and `end` (ISO 8601 timestamps with timezone), and `format` (`json` or `csv`). The default window is the last 30 days; the maximum is 366 days. The end is exclusive. Reading rows carry the contributing bin and reading counts and each sensor's average, minimum, maximum and standard deviation. Names, locations, account IDs, device IDs, bin IDs and individual readings are never returned, and bins without a country are left out. Groups appear whenever they contain readings, regardless of the number of owners.
 
 ```bash
 curl -H "x-research-key: $RESEARCH_API_KEY" \
   'http://127.0.0.1:8000/research/daily?country_code=ID&start=2026-10-01T00:00:00Z&end=2026-10-16T00:00:00Z'
 ```
+
+## Public figures
+
+`routers/public.py` serves the figures on the public website. They need no key, and NGINX passes `compostiq.win/api/public/...` through to them.
+
+| Endpoint | Returns |
+|---|---|
+| `GET /public/stats` | `bins` and `countries` that have sent readings, `active_devices` (in a bin and heard from in the last 10 minutes), `readings_total`, `readings_24h`, `first_reading_at`, `last_reading_at`, `updated_at` |
+| `GET /public/bins-by-country` | `[{country_code, bins}]`, bins that have sent readings, most first |
+| `GET /public/trends` | `{days: [{date, temperature_c, moisture_percent}]}`: the daily averages across every bin for the last 30 UTC days, with `null` on a day without readings |
+
+Anyone can call them, so each answer is kept in memory for 60 seconds rather than counting every reading on every page view.
 
 ## Tests
 

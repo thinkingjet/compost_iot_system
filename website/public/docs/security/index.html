@@ -84,6 +84,7 @@
 <nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Docs</a><span aria-hidden="true">/</span><span>Devices &amp; accounts</span><span aria-hidden="true">/</span><span aria-current="page">Pairing &amp; security</span></nav>
 <h1 class="docs-title">Pairing &amp; security</h1>
 <p class="docs-lead">How a device joins your account, the safeguards on pairing codes and device keys, and what to do if one is exposed.</p>
+<p>A device joins an account in one of two ways. <strong>Pairing</strong>: the device redeems a 6-digit code from the dashboard and receives its own key. <strong>Registering with an API key</strong>: for a device that can't pair, you name it and choose its bin in the dashboard, which shows its key once for you to copy onto the device.</p>
 
 <dl class="facts">
 <div><dt>Pairing code</dt><dd>6 digits, single use</dd></div>
@@ -105,19 +106,19 @@
 
 <section id="keys" class="doc-section">
 <h2>Device keys</h2>
-<p>Redeeming a code gives the device its own API key, which it sends with every upload to <code>POST /records</code>.</p>
+<p>Every device has its own API key, which it sends in the <code>x-key</code> header with every upload to <code>POST /records</code>. The key can do nothing else.</p>
 <div class="defs">
 <div class="def"><span class="def__k">Random</span><span class="def__v">32 random bytes, sent as 64 hex characters.</span></div>
-<div class="def"><span class="def__k">Returned once</span><span class="def__v">Sent to the device in the redeem response and never shown again, including to you.</span></div>
+<div class="def"><span class="def__k">Shown once</span><span class="def__v">A paired device receives its key in the redeem response, and it is never shown to you. A registered device's key is shown to you once, to copy onto the device.</span></div>
 <div class="def"><span class="def__k">Stored as a hash</span><span class="def__v">The API keeps only a SHA-256 hash, so the key can't be read back from the database.</span></div>
-<div class="def"><span class="def__k">Revoked on unpair</span><span class="def__v">Unpairing a device revokes its key at once. Later uploads get <code>401</code>.</span></div>
+<div class="def"><span class="def__k">Revoked on removal</span><span class="def__v">Removing a device in the dashboard revokes its key at once. Later uploads get <code>401</code>, and the device can be paired again.</span></div>
 </div>
 </section>
 
 <section id="steps" class="doc-section">
 <h2>Pairing step by step</h2>
 <ol class="steps-list">
-<li><span class="step-n">1</span><div class="steps-list__body"><span><span class="tag tag--good">Dashboard</span></span><p><strong>Add device.</strong> The dashboard shows a code and a 10-minute countdown. <code>POST /pairing/codes</code></p></div></li>
+<li><span class="step-n">1</span><div class="steps-list__body"><span><span class="tag tag--good">Dashboard</span></span><p><strong>Get a code.</strong> Choose <strong>Pair a device</strong>, then <strong>Get pairing code</strong>. The code works for 10 minutes. <code>POST /pairing/codes</code></p></div></li>
 <li><span class="step-n">2</span><div class="steps-list__body"><span><span class="tag tag--blue">Device page</span></span><p><strong>Enter the code.</strong> The device sends it with its hardware ID and receives its key. <code>POST /pairing/redeem</code></p></div></li>
 <li><span class="step-n">3</span><div class="steps-list__body"><span><span class="tag tag--good">Dashboard</span></span><p><strong>Check the hardware ID.</strong> The dashboard shows which device redeemed the code. Make sure it matches the ID on the device's page. <code>GET /pairing/codes/{code}</code></p></div></li>
 <li><span class="step-n">4</span><div class="steps-list__body"><span><span class="tag tag--good">Dashboard</span></span><p><strong>Confirm.</strong> Name the device and choose its bin. Until you do, its uploads are answered with <code>409</code>. <code>POST /devices/{id}/setup</code></p></div></li>
@@ -133,7 +134,8 @@
 <tbody>
 <tr><td class="tbl__key">A pairing code nobody has used</td><td>Nothing. Let it expire, or create a new one.</td></tr>
 <tr><td class="tbl__key">A pairing code someone else redeemed</td><td>Don't confirm the unknown hardware ID. Remove it and create a new code.</td></tr>
-<tr><td class="tbl__key">A device key</td><td>Unpair the device in the dashboard, then pair it again to get a new key.</td></tr>
+<tr><td class="tbl__key">A paired device's key</td><td>Remove the device in its settings, then pair it again. The old key stops working when you remove it.</td></tr>
+<tr><td class="tbl__key">A registered device's key</td><td>Choose <strong>New API key</strong> in the device's settings and copy the new key onto the device. The old one stops working at once.</td></tr>
 <tr><td class="tbl__key">Your password</td><td>Change it on the account page. Sessions that are already signed in end within 8 hours.</td></tr>
 </tbody>
 </table>
@@ -148,13 +150,14 @@
 <div class="def"><span class="def__k">Sessions</span><span class="def__v">An 8-hour token, kept in a signed, HttpOnly cookie that page scripts can't read.</span></div>
 <div class="def"><span class="def__k">Transport</span><span class="def__v">HTTPS only, with HSTS on the website, the dashboard and the API.</span></div>
 <div class="def"><span class="def__k">Ownership</span><span class="def__v">Every bin, device, reading and alert query is filtered by owner. Anything you don't own returns <code>404</code>.</span></div>
-<div class="def"><span class="def__k">Deleting an account</span><span class="def__v">Deletes your bins, readings and alerts, unpairs your devices and revokes their keys.</span></div>
+<div class="def"><span class="def__k">Deleting an account</span><span class="def__v">Deletes your bins, readings, alerts, pairing codes and research keys, and releases your devices with their keys revoked, so they can be paired again.</span></div>
 </div>
 </section>
 
 <section id="open-data" class="doc-section">
 <h2>What the open data includes</h2>
 <p>The research API only ever returns figures summed up per country: never names, emails, bin names, locations finer than country, or device identifiers. It needs a research key, which only a researcher account can create. Keys are stored as SHA-256 hashes, and deleting one stops it working at once. The <a href="/open-data/#fields">data dictionary</a> lists every field.</p>
+<p>The public figures on this website need no key and are coarser still: totals across every bin, the number of bins in each country, and daily averages across all bins.</p>
 </section>
 
 <section id="report" class="doc-section">
