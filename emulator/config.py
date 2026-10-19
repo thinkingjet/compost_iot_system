@@ -33,9 +33,15 @@ class Settings:
     # how the pile is simulated
     reading_interval_seconds: float
     time_scale: float
-    start_stage: int
     ambient_temp_c: float
     seed: int | None
+
+    # the starting point the device page opens with (it can change them):
+    # the batch's stage and how far through it, in %, and how many days of
+    # its history to send when the cloud first takes this device's readings
+    start_stage: int
+    start_progress: int
+    backfill_days: int
 
     # uplink behaviour
     upload_batch_max: int
@@ -113,10 +119,15 @@ def load_settings():
         port=_number("DEVICE_PORT", 8080, int, minimum=1, maximum=65535),
         state_file=Path(_get("STATE_FILE", str(THIS_FOLDER / "state" / "device.json"))),
         reading_interval_seconds=_number("READING_INTERVAL_SECONDS", 30.0, float, minimum=1),
-        time_scale=_number("TIME_SCALE", 60.0, float, minimum=1),
-        start_stage=_number("START_STAGE", 0, int, minimum=0, maximum=4),
+        # 1: the pile keeps pace with the clock its readings are stamped with,
+        # which is what the cloud's stage estimate expects
+        time_scale=_number("TIME_SCALE", 1.0, float, minimum=1),
         ambient_temp_c=_number("AMBIENT_TEMP_C", 28.0, float, minimum=-10, maximum=45),
         seed=_number("SEED", None, int),
+        start_stage=_number("START_STAGE", 0, int, minimum=0, maximum=4),
+        start_progress=_number("START_STAGE_PROGRESS", 0, int, minimum=0, maximum=95),
+        # more than the upload queue holds is cut down to fit when the device starts
+        backfill_days=_number("BACKFILL_DAYS", 5, int, minimum=0, maximum=365),
         upload_batch_max=_number("UPLOAD_BATCH_MAX", 50, int, minimum=1, maximum=1000),
         queue_max=_number("QUEUE_MAX", 1000, int, minimum=1),
         setup_check_seconds=_number("SETUP_CHECK_SECONDS", 10.0, float, minimum=1),

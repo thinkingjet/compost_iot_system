@@ -176,15 +176,27 @@ footer { padding-top: 16px; padding-bottom: 32px; }
 .action b { display: block; font-weight: 600; }
 .action small { display: block; color: var(--dim); font-size: 13px; }
 
-.backfill { display: grid; gap: 4px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
-.backfill > small { color: var(--dim); font-size: 13px; }
-.backfill .row { align-items: center; margin-top: 6px; }
-.backfill .notice { margin: 6px 0 0; }
 .days-input {
   width: 7ch; min-width: 0; padding: 7px 10px; border-radius: 8px;
   border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
   font: inherit; font-variant-numeric: tabular-nums;
 }
+
+/* --------------------------------------------------- starting point --- */
+
+.start-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+              gap: 12px 20px; margin: 12px 0 4px; }
+.field { display: grid; gap: 6px; align-content: start; font-size: 14px; font-weight: 500; }
+.field .inline { display: flex; align-items: center; gap: 8px; font-weight: 400; }
+.field output { font-variant-numeric: tabular-nums; }
+.select {
+  min-width: 0; padding: 7px 10px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font: inherit;
+}
+.start-form input[type="range"] { width: 100%; accent-color: var(--primary); margin: 6px 0 0; }
+:is(.select, input[type="range"]):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+#start-summary { margin: 8px 0 0; }
+#start-hint { margin: 8px 0 0; }
 
 /* ------------------------------------------------------------- log --- */
 

@@ -166,6 +166,13 @@ class CompostModel:
     def cured(self):
         return self.stage_id == LAST_STAGE and self.stage_day >= self.stage_duration
 
+    @property
+    def stage_progress(self):
+        """How far through its stage the pile is, 0 to 1."""
+        if self.stage_duration <= 0:
+            return 1.0
+        return min(1.0, self.stage_day / self.stage_duration)
+
     # -------------------------------------------------------- the physics ---
 
     def _curve_temp(self):

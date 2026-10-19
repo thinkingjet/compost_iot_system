@@ -14,7 +14,7 @@ class WebTest(unittest.TestCase):
     def setUp(self):
         self.cloud = FakeCloud().start()
         self.addCleanup(self.cloud.stop)
-        settings = make_settings(self.cloud.url, port=0)
+        settings = make_settings(self.cloud.url, port=0, backfill_days=0)
         self.device = Device(settings)
         server = make_server(settings, self.device)
         threading.Thread(target=server.serve_forever, args=(0.05,), daemon=True).start()
@@ -76,6 +76,27 @@ class WebTest(unittest.TestCase):
         for days in ("2", 2.5, True, None):
             self.assertEqual(self.call("/api/batch", {"days_ago": days})[0], 400, days)
         self.assertEqual(self.call("/api/batch", {"days_ago": 999})[0], 400)
+
+    def test_setting_the_starting_point(self):
+        status, body = self.call("/api/start", {"history_days": 15, "stage": 2, "progress": 40})
+        self.assertEqual(status, 200)
+        start = json.loads(body)["start"]
+        self.assertEqual((start["history_days"], start["stage"], start["progress"]), (15, 2, 40))
+        self.assertEqual(start["preview"]["begins"]["stage_name"], "Peak Decomposition")
+
+        status, body = self.call("/api/start", {"progress": 50})  # just one of them
+        self.assertEqual((status, json.loads(body)["start"]["stage"]), (200, 2))
+
+        for bad in ({}, {"stage": 9}, {"history_days": "15"}, {"progress": None}):
+            self.assertEqual(self.call("/api/start", bad)[0], 400, bad)
+
+    def test_starting_the_batch_from_the_starting_point(self):
+        self.call("/api/start", {"history_days": 0, "stage": 3, "progress": 50})
+        status, body = self.call("/api/batch", {})  # no history: works unpaired
+        self.assertEqual((status, json.loads(body)["pile"]["stage_name"]), (200, "Cooling"))
+
+        self.call("/api/start", {"history_days": 2})
+        self.assertEqual(self.call("/api/batch", {})[0], 409)  # history needs the cloud
 
     def test_posts_must_be_json_so_other_sites_cant_press_buttons(self):
         # a cross-site form or fetch without a preflight can only send these types
