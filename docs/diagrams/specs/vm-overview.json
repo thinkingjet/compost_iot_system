@@ -1,0 +1,207 @@
+{
+  "id": "vm-overview",
+  "title": "The production VM",
+  "claim": "Only NGINX answers web traffic from the internet. The dashboard, the API and the database listen on the VM's loopback address, and PM2 keeps the two apps running.",
+  "frames": [
+    {
+      "id": "vm",
+      "label": "Ubuntu VM",
+      "sub": "web traffic on 80 and 443",
+      "cols": [
+        2,
+        4
+      ],
+      "rows": [
+        1,
+        3
+      ],
+      "tone": "slate"
+    },
+    {
+      "id": "loopback",
+      "label": "Loopback only",
+      "sub": "127.0.0.1, unreachable from outside",
+      "cols": [
+        3,
+        4
+      ],
+      "rows": [
+        2,
+        3
+      ],
+      "tone": "amber",
+      "dashed": true
+    },
+    {
+      "id": "pm2",
+      "label": "PM2",
+      "sub": "restarts and reboots",
+      "nodes": [
+        "dashboard",
+        "api"
+      ],
+      "tone": "violet"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "browser",
+      "row": 1,
+      "col": 1,
+      "kind": "actor",
+      "title": "Browser",
+      "tone": "green"
+    },
+    {
+      "id": "dns",
+      "row": 2,
+      "col": 1,
+      "kind": "external",
+      "title": "DNS",
+      "desc": "4 names, all pointing at the VM"
+    },
+    {
+      "id": "device",
+      "row": 3,
+      "col": 1,
+      "kind": "actor",
+      "title": "Compost device",
+      "tone": "green"
+    },
+    {
+      "id": "nginx",
+      "row": 2,
+      "col": 2,
+      "title": "NGINX",
+      "tag": "systemd service",
+      "desc": "HTTPS for all 4 names; port 80 only redirects",
+      "tone": "teal"
+    },
+    {
+      "id": "files",
+      "row": 1,
+      "col": 3,
+      "kind": "store",
+      "title": "Website files",
+      "sub": "/var/www/compostiq",
+      "tone": "amber"
+    },
+    {
+      "id": "dashboard",
+      "row": 2,
+      "col": 3,
+      "title": "Dashboard",
+      "tag": "Dash · gunicorn",
+      "sub": "127.0.0.1:8050",
+      "desc": "never gets the DB password",
+      "tone": "blue"
+    },
+    {
+      "id": "api",
+      "row": 3,
+      "col": 3,
+      "title": "API",
+      "tag": "FastAPI · uvicorn",
+      "sub": "127.0.0.1:8000",
+      "desc": "the only app with the DB password",
+      "tone": "blue"
+    },
+    {
+      "id": "db",
+      "row": 3,
+      "col": 4,
+      "kind": "store",
+      "title": "PostgreSQL",
+      "tag": "systemd service",
+      "sub": "127.0.0.1:5432",
+      "tone": "amber"
+    }
+  ],
+  "edges": [
+    {
+      "from": "browser",
+      "to": "dns",
+      "label": "look up name",
+      "kind": "data"
+    },
+    {
+      "from": "browser",
+      "to": "nginx",
+      "label": "HTTPS :443",
+      "step": 1,
+      "accent": true
+    },
+    {
+      "from": "nginx",
+      "to": "dashboard",
+      "label": "dashboard.compostiq.win",
+      "step": 2
+    },
+    {
+      "from": "dashboard",
+      "to": "api",
+      "label": "loopback",
+      "step": 3
+    },
+    {
+      "from": "api",
+      "to": "db",
+      "label": "SQL",
+      "step": 4
+    },
+    {
+      "from": "nginx",
+      "to": "files",
+      "label": "compostiq.win",
+      "step": "A"
+    },
+    {
+      "from": "nginx",
+      "to": "api",
+      "label": "/api/public/*",
+      "step": "A"
+    },
+    {
+      "from": "device",
+      "to": "dns",
+      "label": "look up name",
+      "kind": "data"
+    },
+    {
+      "from": "device",
+      "to": "nginx",
+      "label": "HTTPS :443",
+      "step": "B",
+      "accent": true
+    },
+    {
+      "from": "nginx",
+      "to": "api",
+      "label": "api.compostiq.win",
+      "step": "B"
+    }
+  ],
+  "steps": [
+    "A browser looks the name up in DNS, gets the VM's address and connects on port 443. All four names (`compostiq.win`, `www`, `dashboard`, `api`) point at this one VM, and one Let's Encrypt certificate covers them all.",
+    "NGINX chooses a site by the name that was asked for. `dashboard.compostiq.win` goes to the dashboard on `127.0.0.1:8050`.",
+    "The dashboard builds each page on the server and calls the API over loopback, never through NGINX. A signed-in user's browser never talks to the API itself.",
+    "Only the API has the database password. PostgreSQL listens on `127.0.0.1:5432`, and that port is never opened to the outside.",
+    {
+      "id": "A",
+      "text": "`compostiq.win` is plain HTML. Its folder is mounted straight from the repo, so a `git pull` publishes a change with no restart. Its live figures ask `/api/public/*`, which NGINX passes to the API's `/public/*`."
+    },
+    {
+      "id": "B",
+      "text": "Devices send readings to `api.compostiq.win`, and researchers' own scripts call `/research/*` there with a research key. Sign-in and pairing requests on this name are limited to 10 a minute per address before they reach the API; `/research/*` has no limit."
+    }
+  ],
+  "notes": [
+    "PM2 runs the dashboard and the API from `deploy/pm2/ecosystem.config.js`. It restarts either app when it crashes or passes 500 MB, and starts both again after a reboot. NGINX and PostgreSQL are ordinary systemd services.",
+    "PM2 reads the one `.env` file and gives each app only the settings it needs, which is how the dashboard never sees `DATABASE_URL`.",
+    "SSH is not part of this picture: the repo holds no firewall settings, and a deploy is done by logging in to the VM."
+  ],
+  "legend": {
+    "accent": "the only way in",
+    "data": "name lookup"
+  }
+}

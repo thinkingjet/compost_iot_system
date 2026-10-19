@@ -1,0 +1,119 @@
+{
+  "id": "compost-stages",
+  "title": "The composting cycle",
+  "claim": "A pile passes through five stages, each with its own expected readings, over about seven weeks. Peak decomposition is the stretch held at 55 °C or above, where pathogens die. The simulator and the emulator generate their readings from these ranges, and the stage model learned from them.",
+  "nodes": [
+    {
+      "id": "s0",
+      "row": 1,
+      "col": 1,
+      "kind": "record",
+      "title": "Early mesophilic",
+      "tag": "stage 0",
+      "tone": "amber",
+      "fields": [
+        "temperature // 28–45 °C",
+        "moisture // 60–65 %",
+        "O₂ // 15.5–21 %",
+        "CO₂ // 0.5–5.5 %",
+        "days // about 2"
+      ]
+    },
+    {
+      "id": "s1",
+      "row": 1,
+      "col": 2,
+      "kind": "record",
+      "title": "Active thermophilic",
+      "tag": "stage 1",
+      "tone": "amber",
+      "fields": [
+        "temperature // 45–60 °C",
+        "moisture // 55–60 %",
+        "O₂ // 12–17.5 %",
+        "CO₂ // 3.5–9 %",
+        "days // about 3"
+      ]
+    },
+    {
+      "id": "s2",
+      "row": 1,
+      "col": 3,
+      "kind": "record",
+      "title": "Peak decomposition",
+      "tag": "stage 2",
+      "tone": "amber",
+      "accent": true,
+      "fields": [
+        "*temperature // 55–65 °C",
+        "moisture // 50–58 %",
+        "O₂ // 10–16.5 %",
+        "CO₂ // 4.5–11 %",
+        "days // about 5"
+      ]
+    },
+    {
+      "id": "s3",
+      "row": 1,
+      "col": 4,
+      "kind": "record",
+      "title": "Cooling",
+      "tag": "stage 3",
+      "tone": "amber",
+      "fields": [
+        "temperature // 60 down to 30 °C",
+        "moisture // 45–55 %",
+        "O₂ // 11–20 %",
+        "CO₂ // 1–10 %",
+        "days // about 8"
+      ]
+    },
+    {
+      "id": "s4",
+      "row": 1,
+      "col": 5,
+      "kind": "record",
+      "title": "Maturation",
+      "tag": "stage 4",
+      "tone": "green",
+      "fields": [
+        "temperature // 28–32 °C",
+        "moisture // 40–50 %",
+        "O₂ // 19–21 %",
+        "CO₂ // 0.3–2 %",
+        "days // about 30"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "s0",
+      "to": "s1",
+      "label": "heats up"
+    },
+    {
+      "from": "s1",
+      "to": "s2",
+      "label": "peaks"
+    },
+    {
+      "from": "s2",
+      "to": "s3",
+      "label": "cools"
+    },
+    {
+      "from": "s3",
+      "to": "s4",
+      "label": "settles"
+    }
+  ],
+  "legend": {
+    "call": "the pile moves on",
+    "accent": "pathogen-kill target"
+  },
+  "notes": [
+    "Holding 55 °C or more for three days in a row kills pathogens: the EPA Class A sanitation target. Peak decomposition starts once the core has held 55 °C for 6 hours. A bin that never gets that hot, like a small Takakura basket, goes straight from active thermophilic to cooling.",
+    "The ranges, their sources and the ammonia level (0 to 1, relative, not ppm) are in `simulator/composting_stages.py`. The floor is 28 °C because the pilot site in Mataram is 24 to 32 °C outside.",
+    "The API estimates a real bin's stage with a model trained in `ml/` on cycles simulated from these ranges. Alerts use their own fixed limits."
+  ]
+}

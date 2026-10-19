@@ -1,0 +1,192 @@
+{
+  "id": "vm-reliability",
+  "title": "How PM2 keeps the apps up",
+  "claim": "PM2 brings an app back after a crash, a memory overrun or a reboot without anyone logging in. A person is needed only when an app keeps failing as it starts, and for a deploy.",
+  "frames": [
+    {
+      "id": "pm2",
+      "label": "PM2",
+      "sub": "deploy/pm2/ecosystem.config.js",
+      "cols": [
+        3,
+        5
+      ],
+      "rows": [
+        1,
+        3
+      ],
+      "tone": "violet"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "boot",
+      "row": 1,
+      "col": 1,
+      "kind": "actor",
+      "title": "VM boots",
+      "tone": "green"
+    },
+    {
+      "id": "systemd",
+      "row": 1,
+      "col": 2,
+      "title": "systemd",
+      "tag": "service manager",
+      "desc": "starts NGINX, PostgreSQL and PM2",
+      "tone": "teal"
+    },
+    {
+      "id": "daemon",
+      "row": 1,
+      "col": 3,
+      "title": "PM2 daemon",
+      "sub": "pm2 resurrect",
+      "desc": "starts the apps saved by pm2 save",
+      "tone": "violet"
+    },
+    {
+      "id": "running",
+      "row": 2,
+      "col": 3,
+      "title": "App running",
+      "tag": "compostiq-api · -dashboard",
+      "desc": "both apps follow the same rules",
+      "tone": "blue"
+    },
+    {
+      "id": "check",
+      "row": 2,
+      "col": 4,
+      "kind": "decision",
+      "tag": "PM2 check",
+      "title": "10 quick failures in a row?",
+      "tone": "violet"
+    },
+    {
+      "id": "restart",
+      "row": 3,
+      "col": 4,
+      "title": "Restart it",
+      "sub": "restart_delay: 3000",
+      "desc": "waits 3 s, starts a new process",
+      "tone": "violet"
+    },
+    {
+      "id": "errored",
+      "row": 2,
+      "col": 5,
+      "title": "Marked errored",
+      "desc": "stays down until someone fixes it and runs pm2 restart",
+      "tone": "slate"
+    },
+    {
+      "id": "dev",
+      "row": 3,
+      "col": 1,
+      "kind": "actor",
+      "title": "New code",
+      "tone": "green"
+    },
+    {
+      "id": "deploy",
+      "row": 3,
+      "col": 2,
+      "kind": "record",
+      "title": "Deploy, by hand",
+      "tag": "on the VM",
+      "tone": "amber",
+      "fields": [
+        "git pull",
+        "uv sync --all-packages",
+        "stop API, back up, migrate",
+        "*pm2 reload --update-env"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "boot",
+      "to": "systemd",
+      "label": "starts",
+      "step": 1
+    },
+    {
+      "from": "systemd",
+      "to": "daemon",
+      "label": "pm2 startup unit",
+      "step": 2
+    },
+    {
+      "from": "daemon",
+      "to": "running",
+      "label": "starts saved apps",
+      "step": 3
+    },
+    {
+      "from": "running",
+      "to": "check",
+      "label": "exits, or > 500 MB",
+      "kind": "async",
+      "step": 4,
+      "accent": true
+    },
+    {
+      "from": "check",
+      "to": "restart",
+      "label": "no",
+      "step": 5,
+      "accent": true
+    },
+    {
+      "from": "restart",
+      "to": "running",
+      "label": "back up",
+      "step": 6,
+      "accent": true
+    },
+    {
+      "from": "check",
+      "to": "errored",
+      "label": "yes: give up",
+      "step": "A"
+    },
+    {
+      "from": "dev",
+      "to": "deploy",
+      "label": "new commits",
+      "step": "B"
+    },
+    {
+      "from": "deploy",
+      "to": "running",
+      "label": "reload",
+      "step": "B"
+    }
+  ],
+  "steps": [
+    "When the VM boots, systemd starts NGINX, PostgreSQL and PM2. Running `pm2 startup systemd` once installed the unit that starts PM2.",
+    "PM2 comes up and reads the process list that `pm2 save` stored.",
+    "It starts the dashboard (gunicorn) and the API (uvicorn), each with only its own settings from `.env`.",
+    "PM2 notices when an app's process exits, or when it grows past `max_memory_restart: 500M`.",
+    "Unless the app has failed ten times in a row, each time within a second of starting, PM2 restarts it.",
+    "After `restart_delay` (3 seconds) a fresh process starts and the app is back, usually before anyone notices.",
+    {
+      "id": "A",
+      "text": "Ten quick failures in a row (`max_restarts: 10`) usually means a start-up problem, such as a missing secret. PM2 stops trying and marks the app errored; `pm2 logs` shows why."
+    },
+    {
+      "id": "B",
+      "text": "A deploy is done by hand on the VM: pull, install, stop the API while the database is backed up and any new migrations run, then reload both apps so they pick up new code and settings."
+    }
+  ],
+  "notes": [
+    "Only quick failures count towards the ten. An app that runs for a while and then crashes is restarted every time. This is PM2's documented `min_uptime` behaviour (1 second by default), not something set in this repo.",
+    "PM2 restarts a process that has exited, not one that is up but not answering. The repo has no health check or uptime monitor.",
+    "Logs are rotated by `pm2-logrotate`: 10 MB a file, 7 files kept. A `git pull` alone publishes the website, but an NGINX config change also has to be copied into `/etc/nginx` and reloaded."
+  ],
+  "legend": {
+    "accent": "one automatic restart",
+    "async": "PM2 notices"
+  }
+}

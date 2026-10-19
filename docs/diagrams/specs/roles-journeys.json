@@ -1,0 +1,250 @@
+{
+  "id": "roles-journeys",
+  "title": "Owners and researchers",
+  "claim": "Everyone signs up on one page and picks an account type once. Each type then gets its own pages, and the API checks the type again on every request, reading it from the database: owners cannot reach research data, and researchers cannot reach bins or devices.",
+  "groups": [
+    {
+      "label": "Compost owner",
+      "cols": [
+        1,
+        2
+      ],
+      "tone": "green"
+    },
+    {
+      "label": "Shared",
+      "cols": [
+        3
+      ],
+      "tone": "slate"
+    },
+    {
+      "label": "Researcher",
+      "cols": [
+        4,
+        5
+      ],
+      "tone": "violet"
+    }
+  ],
+  "phases": [
+    {
+      "label": "Sign up",
+      "rows": [
+        1,
+        1
+      ]
+    },
+    {
+      "label": "Home",
+      "rows": [
+        2,
+        2
+      ]
+    },
+    {
+      "label": "Every day",
+      "rows": [
+        3,
+        4
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "osign",
+      "row": 1,
+      "col": 1,
+      "kind": "actor",
+      "title": "Signs up as an owner"
+    },
+    {
+      "id": "signup",
+      "row": 1,
+      "col": 3,
+      "title": "One sign-up page",
+      "sub": "/register",
+      "desc": "pick an account type"
+    },
+    {
+      "id": "rsign",
+      "row": 1,
+      "col": 5,
+      "kind": "actor",
+      "title": "Signs up as a researcher"
+    },
+    {
+      "id": "ohome",
+      "row": 2,
+      "col": 2,
+      "title": "Owner dashboard",
+      "sub": "/dashboard",
+      "desc": "bins and devices only"
+    },
+    {
+      "id": "role",
+      "row": 2,
+      "col": 3,
+      "kind": "decision",
+      "tag": "users.role",
+      "title": "Which account type?"
+    },
+    {
+      "id": "rhome",
+      "row": 2,
+      "col": 4,
+      "title": "API keys page",
+      "sub": "/research",
+      "desc": "up to 5 keys, each shown once"
+    },
+    {
+      "id": "ofeat",
+      "row": 3,
+      "col": 2,
+      "title": "Bins, devices, alerts",
+      "desc": "pair, watch, get warned"
+    },
+    {
+      "id": "guard",
+      "row": 3,
+      "col": 3,
+      "title": "Account type check",
+      "sub": "require_role(…)",
+      "desc": "wrong type gets 403"
+    },
+    {
+      "id": "rdata",
+      "row": 3,
+      "col": 4,
+      "title": "Explore data",
+      "sub": "/research/data",
+      "desc": "daily, overall, alerts"
+    },
+    {
+      "id": "oapi",
+      "row": 4,
+      "col": 2,
+      "title": "Owner routes",
+      "sub": "/bins /devices /alerts /pairing/codes",
+      "desc": "only rows they own"
+    },
+    {
+      "id": "rapi",
+      "row": 4,
+      "col": 4,
+      "title": "Research routes",
+      "sub": "/research/*",
+      "desc": "per-country aggregates"
+    },
+    {
+      "id": "ruse",
+      "row": 4,
+      "col": 5,
+      "kind": "actor",
+      "title": "Researcher's own code"
+    }
+  ],
+  "edges": [
+    {
+      "from": "osign",
+      "to": "signup",
+      "label": "Compost owner",
+      "step": 1
+    },
+    {
+      "from": "rsign",
+      "to": "signup",
+      "label": "Researcher",
+      "step": 1
+    },
+    {
+      "from": "signup",
+      "to": "role",
+      "label": "saved once",
+      "step": 2
+    },
+    {
+      "from": "role",
+      "to": "ohome",
+      "label": "owner",
+      "step": 3
+    },
+    {
+      "from": "role",
+      "to": "rhome",
+      "label": "researcher",
+      "step": 3
+    },
+    {
+      "from": "ohome",
+      "to": "ofeat",
+      "label": "menu",
+      "step": 4
+    },
+    {
+      "from": "ofeat",
+      "to": "guard",
+      "label": "signed-in request",
+      "step": 5,
+      "accent": true
+    },
+    {
+      "from": "guard",
+      "to": "oapi",
+      "label": "owner: yes",
+      "step": 5,
+      "accent": true
+    },
+    {
+      "from": "rhome",
+      "to": "rdata",
+      "label": "menu",
+      "step": 6
+    },
+    {
+      "from": "rdata",
+      "to": "guard",
+      "label": "signed-in request",
+      "step": 6,
+      "accent": true
+    },
+    {
+      "from": "guard",
+      "to": "rapi",
+      "label": "researcher: yes",
+      "step": 6,
+      "accent": true
+    },
+    {
+      "from": "rhome",
+      "to": "ruse",
+      "label": "key, shown once",
+      "kind": "data",
+      "step": 7
+    },
+    {
+      "from": "ruse",
+      "to": "rapi",
+      "label": "x-research-key",
+      "step": 8
+    }
+  ],
+  "steps": [
+    "Both kinds of user start on the same sign-up page and choose Compost owner or Researcher. Owner is preselected.",
+    "The type is stored in `users.role` as `owner` or `researcher`. It is chosen once: nothing in the dashboard or the API changes it later, and the account page shows it read-only.",
+    "Each type lands on its own home page with its own menu: `/dashboard` for owners, `/research` (the API keys page) for researchers. Only Account is shared. Opening the other type's page quietly sends you back to your own home page.",
+    "Owners pair or register devices, create bins, follow them on charts and see alerts.",
+    "Every dashboard page calls the API from the dashboard's server with the user's token. `require_role` reads the account type from the database and refuses the wrong type with 403, \"Not available to researcher accounts.\" An owner only ever gets rows they own.",
+    "The Explore data page shows the research figures as a table with a Daily, Overall and Alerts switch and a CSV download. It calls `/research/preview/*` with the researcher's token, so it needs no key.",
+    "A researcher names and creates a key on the API keys page. The key is shown once; only its SHA-256 hash is stored in `research_apikeys`. Deleting it stops it working at once.",
+    "The researcher's own scripts call `/research/overview`, `/daily`, `/alerts` and `/countries` with the key in the `x-research-key` header. The API looks the hash up and also checks that the key's account is still a researcher."
+  ],
+  "notes": [
+    "The dashboard's per-type pages are a convenience. The real control is the API's check on every request, using the role stored in the database: the sign-in token carries only the user id and its expiry.",
+    "`POST /pairing/redeem` is the one pairing route with no account check, because the device calls it with a code, not a signed-in user."
+  ],
+  "legend": {
+    "accent": "checked by the API on every request",
+    "data": "handed over"
+  }
+}

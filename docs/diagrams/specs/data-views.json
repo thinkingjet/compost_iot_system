@@ -1,0 +1,170 @@
+{
+  "id": "data-views",
+  "title": "One database, two views",
+  "claim": "An owner sees every detail of their own bins and nothing of anyone else's. A researcher gets totals and averages per country, by day or over a period, with names, places and IDs left out.",
+  "groups": [
+    {
+      "label": "Stored",
+      "cols": [
+        1
+      ],
+      "tone": "amber"
+    },
+    {
+      "label": "Sorted by",
+      "cols": [
+        2
+      ],
+      "tone": "teal"
+    },
+    {
+      "label": "What each view holds",
+      "cols": [
+        3
+      ],
+      "tone": "blue"
+    },
+    {
+      "label": "Who sees it",
+      "cols": [
+        4
+      ],
+      "tone": "green"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "db",
+      "row": 2,
+      "col": 1,
+      "kind": "record",
+      "title": "PostgreSQL",
+      "tag": "one database",
+      "fields": [
+        "users: email, display_name",
+        "bins: name, location",
+        "*bins: country_code",
+        "devices: mac, name",
+        "records: timestamp, sensors",
+        "bin_events: type, times",
+        "ids: user, bin, device"
+      ]
+    },
+    {
+      "id": "scope",
+      "row": 1,
+      "col": 2,
+      "title": "Owner's rows only",
+      "sub": "WHERE user_id = me",
+      "desc": "others' bins are 404"
+    },
+    {
+      "id": "group",
+      "row": 2,
+      "col": 2,
+      "title": "Group by country",
+      "sub": "GROUP BY country_code",
+      "desc": "and by UTC day for daily"
+    },
+    {
+      "id": "ownerview",
+      "row": 1,
+      "col": 3,
+      "kind": "record",
+      "title": "Owner view",
+      "tag": "dashboard",
+      "fields": [
+        "bins, devices, alerts // own only",
+        "readings // exact time, per device",
+        "history // daily averages, up to a year",
+        "device keys // shown once"
+      ]
+    },
+    {
+      "id": "researchview",
+      "row": 2,
+      "col": 3,
+      "kind": "record",
+      "title": "Research view",
+      "tag": "/research/*",
+      "fields": [
+        "*country_code // the only place kept",
+        "day // UTC, or the whole period",
+        "bin_count, reading_count",
+        "temperature_c, … // avg, min, max, sd",
+        "alerts // count and hours to fix",
+        "names, emails, locations // removed",
+        "MACs and database ids // removed"
+      ]
+    },
+    {
+      "id": "owner",
+      "row": 1,
+      "col": 4,
+      "kind": "actor",
+      "title": "Compost owner"
+    },
+    {
+      "id": "researcher",
+      "row": 2,
+      "col": 4,
+      "kind": "actor",
+      "title": "Researcher"
+    }
+  ],
+  "edges": [
+    {
+      "from": "db",
+      "to": "scope",
+      "label": "their bins",
+      "step": 1
+    },
+    {
+      "from": "scope",
+      "to": "ownerview",
+      "label": "full detail",
+      "kind": "data",
+      "step": 1
+    },
+    {
+      "from": "ownerview",
+      "to": "owner",
+      "label": "dashboard",
+      "kind": "data"
+    },
+    {
+      "from": "db",
+      "to": "group",
+      "label": "bins with a country",
+      "step": 2,
+      "accent": true
+    },
+    {
+      "from": "group",
+      "to": "researchview",
+      "label": "one row per group",
+      "kind": "data",
+      "step": 2,
+      "accent": true
+    },
+    {
+      "from": "researchview",
+      "to": "researcher",
+      "label": "key or token",
+      "kind": "data",
+      "step": 2,
+      "accent": true
+    }
+  ],
+  "steps": [
+    "Every owner request is answered from the owner's own rows only (`bins.user_id`, `devices.owner_id`). The owner sees exact readings per device, their alerts and their history, and another owner's bin is answered as if it did not exist (404).",
+    "The research routes select only the country and aggregates. Bins without a `country_code` are left out. Overall gives one row per country for the chosen period (up to 366 days, 30 by default); Daily gives one row per country per UTC day; Alerts gives a count per country and alert type, with the average hours to resolve. Each sensor comes as its average, minimum, maximum and standard deviation."
+  ],
+  "notes": [
+    "Every owner's bins that have a country are included in the research figures. There is no opt-out."
+  ],
+  "legend": {
+    "accent": "the research view",
+    "data": "data handed on"
+  }
+}

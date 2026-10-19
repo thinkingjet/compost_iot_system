@@ -1,0 +1,213 @@
+{
+  "id": "data-model",
+  "title": "The data model",
+  "claim": "A user owns bins and devices. A device is placed in a bin through an assignment that keeps its history, and every reading is stored against the bin it was taken in as well as the device that sent it.",
+  "nodes": [
+    {
+      "id": "rkeys",
+      "row": 1,
+      "col": 1,
+      "kind": "record",
+      "title": "research_apikeys",
+      "tag": "research keys",
+      "fields": [
+        "user_id",
+        "name",
+        "api_key_hash // SHA-256"
+      ]
+    },
+    {
+      "id": "users",
+      "row": 1,
+      "col": 2,
+      "kind": "record",
+      "title": "users",
+      "tag": "accounts",
+      "fields": [
+        "email",
+        "password_hash // argon2id",
+        "display_name",
+        "role // owner | researcher"
+      ]
+    },
+    {
+      "id": "codes",
+      "row": 1,
+      "col": 3,
+      "kind": "record",
+      "title": "setup_codes",
+      "tag": "pairing",
+      "fields": [
+        "code // 6 digits",
+        "user_id",
+        "device_id // who redeemed it",
+        "expiry, used_at"
+      ]
+    },
+    {
+      "id": "bins",
+      "row": 2,
+      "col": 1,
+      "kind": "record",
+      "title": "bins",
+      "tag": "compost bins",
+      "fields": [
+        "user_id",
+        "name, location",
+        "country_code // grouped by research"
+      ]
+    },
+    {
+      "id": "assn",
+      "row": 2,
+      "col": 2,
+      "kind": "record",
+      "title": "device_bin_assn",
+      "tag": "history",
+      "fields": [
+        "device_id",
+        "bin_id",
+        "assigned_at",
+        "*unassigned_at // empty while current"
+      ]
+    },
+    {
+      "id": "devices",
+      "row": 2,
+      "col": 3,
+      "kind": "record",
+      "title": "devices",
+      "tag": "hardware",
+      "fields": [
+        "owner_id // empty when unpaired",
+        "mac // empty if registered by key",
+        "registration // pairing | manual",
+        "name, last_seen_at"
+      ]
+    },
+    {
+      "id": "dkeys",
+      "row": 2,
+      "col": 4,
+      "kind": "record",
+      "title": "device_apikeys",
+      "tag": "device keys",
+      "fields": [
+        "device_id",
+        "api_key_hash // SHA-256",
+        "revoked_at"
+      ]
+    },
+    {
+      "id": "events",
+      "row": 3,
+      "col": 1,
+      "kind": "record",
+      "title": "bin_events",
+      "tag": "alerts",
+      "fields": [
+        "bin_id",
+        "type // too_hot, low_oxygen, …",
+        "severity",
+        "triggered_at, resolved_at"
+      ]
+    },
+    {
+      "id": "records",
+      "row": 3,
+      "col": 2,
+      "span": 2,
+      "kind": "record",
+      "title": "records",
+      "tag": "readings",
+      "fields": [
+        "*bin_id // the bin at upload time",
+        "device_id // which device sent it",
+        "timestamp",
+        "temperature, moisture_percent // °C, %",
+        "o2_percent, co2_percent, nh3_ratio // %, %, 0–1"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "users",
+      "to": "rkeys",
+      "label": "researcher has",
+      "kind": "owns"
+    },
+    {
+      "from": "users",
+      "to": "codes",
+      "label": "owner asks for",
+      "kind": "owns"
+    },
+    {
+      "from": "users",
+      "to": "bins",
+      "label": "owns",
+      "kind": "owns"
+    },
+    {
+      "from": "users",
+      "to": "devices",
+      "label": "owns",
+      "kind": "owns"
+    },
+    {
+      "from": "bins",
+      "to": "assn",
+      "label": "hosts",
+      "kind": "owns",
+      "accent": true
+    },
+    {
+      "from": "devices",
+      "to": "assn",
+      "label": "placed by",
+      "kind": "owns",
+      "accent": true
+    },
+    {
+      "from": "devices",
+      "to": "dkeys",
+      "label": "signs in with",
+      "kind": "owns"
+    },
+    {
+      "from": "bins",
+      "to": "events",
+      "label": "raises",
+      "kind": "owns"
+    },
+    {
+      "from": "bins",
+      "to": "records",
+      "label": "collects",
+      "kind": "owns"
+    },
+    {
+      "from": "devices",
+      "to": "records",
+      "label": "sent",
+      "kind": "owns"
+    },
+    {
+      "from": "assn",
+      "to": "records",
+      "label": "picks the bin",
+      "kind": "data",
+      "accent": true
+    }
+  ],
+  "legend": {
+    "owns": "holds",
+    "accent": "how a reading finds its bin",
+    "data": "decides"
+  },
+  "notes": [
+    "Moving a device closes its open assignment and opens a new one, so older readings stay with the bin they were taken in. The database allows only one open assignment per device.",
+    "Deleting an account deletes its bins, and with them their readings and alerts, along with its research keys and pairing codes. Its devices are released (`owner_id` becomes empty) so they can be paired again.",
+    "Left off: `pairing_failures` (wrong pairing codes per address, for the 429 limit) and `device_maintenance`, which the code does not use."
+  ]
+}
