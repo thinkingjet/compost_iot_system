@@ -579,9 +579,10 @@ def device_settings_panel(device, bins):
         gap="xs",
     )
     general = dmc.Card(dmc.SimpleGrid([form, details], cols={"base": 1, "md": 2}, spacing="xl"), padding="lg")
+    remove = _remove_device_card(device, registered)
     if not registered:
         # a paired device gets a new key by being paired again
-        return general
+        return dmc.Stack([general, remove], gap="md")
     key = dmc.Card(
         dmc.Group(
             [
@@ -592,7 +593,32 @@ def device_settings_panel(device, bins):
         ),
         padding="lg",
     )
-    return dmc.Stack([general, key, *_new_key_modal()], gap="md")
+    return dmc.Stack([general, key, remove, *_new_key_modal()], gap="md")
+
+
+def _remove_device_card(device, registered):
+    """Take the device off the account (DELETE /devices/{id}): every key it has
+    stops working at once, so it can't send readings until it joins again."""
+    name = device["name"] or "this device"
+    bin_name = device["bin"]["name"] if device["bin"] else None
+    again = "register it again and put the new key on it" if registered else "pair it again"
+    readings = f" Its past readings stay in {bin_name}." if bin_name else ""
+    return dmc.Card(
+        dmc.Group(
+            [
+                _card_title("Danger zone", "Remove device",
+                            f"Takes it off your account and its key stops working straight away. To use it again, {again}."),
+                # asks "are you sure?" in the browser; the callback only runs on OK
+                dcc.ConfirmDialogProvider(
+                    button("Remove device", "light", icon_name="trash", color="red"),
+                    id="remove-device",
+                    message=f"Remove {name} from your account? Its key stops working at once, so it can't send readings.{readings}",
+                ),
+            ],
+            justify="space-between",
+        ),
+        padding="lg",
+    )
 
 
 def detail_page(kind, item_id, tab):

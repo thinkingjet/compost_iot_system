@@ -1455,6 +1455,31 @@ def save_device_settings(n_clicks, name, bin_id, pathname):
     return no_update, toast("Device settings saved."), device_detail_page(device_id, "settings")
 
 
+@callback(
+    Output("redirect", "data", allow_duplicate=True),
+    Output("notify", "sendNotifications", allow_duplicate=True),
+    Input("remove-device", "submit_n_clicks"),
+    State("url", "pathname"),
+    prevent_initial_call=True,
+)
+def remove_device(confirmed, pathname):
+    """Remove the device from the account; the API revokes its key at once."""
+    if not confirmed:
+        return no_update, no_update
+    try:
+        api_client.unpair_device(_detail_route(pathname)[1])
+    except NotAuthenticated:
+        return _session_ended(pathname)
+    except ApiError as error:
+        if error.status == 404:
+            # already gone (removed in another tab): the page is out of date
+            return goto("/devices"), toast(_device_gone(error), "yellow")
+        return no_update, toast(_api_problem(error), "red")
+    except ApiUnavailable as error:
+        return no_update, toast(_api_problem(error), "red")
+    return goto("/devices"), toast("Its key no longer works, so it can't send readings.", title="Device removed")
+
+
 # ----------------------------------------------------------- notifications ---
 
 @callback(
