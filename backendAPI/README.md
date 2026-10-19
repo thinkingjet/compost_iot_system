@@ -23,6 +23,9 @@ uv run uvicorn main:app --reload --port 8000
 | `JWT_SECRET` | yes | at least 32 characters; the API will not start without it |
 | `JWT_EXPIRY_HOURS` | no | defaults to 8 |
 | `PAIRING_CODE_MINUTES` | no | how long a pairing code stays valid; defaults to 10 |
+| `ML_DIR` | no | the compost stage model's code, `predict.py` and `features.py` ([below](#compost-stage-estimate)); defaults to the repo's `ml/` |
+| `STAGE_MODEL_PATH` | no | the model bundle; defaults to `ML_DIR/models/compost_stage_gb.joblib` |
+| `STAGE_MODEL_PARAMS` | no | a JSON file replacing the bundle's features, stage names and/or stage filter; unset = the bundle's own |
 
 `.env` is read from this folder, whatever directory the API is started from.
 
@@ -36,7 +39,8 @@ uv run uvicorn main:app --reload --port 8000
 | `routers/auth.py` | user accounts, and the `current_user` and `owner_only` dependencies |
 | `routers/pairing.py` | pairing codes: issue, check, and redeem one for a device key |
 | `routers/devices.py` | the user's devices: register without pairing, list, set up (name + bin), new key, unpair |
-| `routers/bins.py` | the user's bins: list, create |
+| `routers/bins.py` | the user's bins: list, create, read, readings, daily history, stage estimate |
+| `stage_model.py` | loads the compost stage classifier once at startup (from the settings above), checks it, and runs it on a bin's readings |
 | `database.py` | the one SQLAlchemy engine everything shares |
 | `config.py` | settings, from the environment or `.env` |
 
@@ -115,6 +119,7 @@ If the hardware ID doesn't match, "That's not my device" calls `DELETE /devices/
 | DELETE | `/devices/{id}` | Bearer | | 204 | 401 · 404 |
 | GET | `/bins` | Bearer | | 200 list of bins | 401 |
 | POST | `/bins` | Bearer | `{name, location?, country_code}` | 201 bin | 401 · 422 |
+| GET | `/bins/{id}/stage?days=60` | Bearer | | 200 stage estimate ([below](#compost-stage-estimate)) | 401 · 404 · 422 · 503 no model |
 
 Every Bearer endpoint in this table is [owner-only](#account-types): a researcher account gets 403.
 
@@ -141,6 +146,29 @@ A lost or leaked key is replaced with `POST /devices/{id}/key`: the old key stop
 
 Everything else is shared with paired devices: `DELETE /devices/{id}` revokes the key, and if the device's bin is deleted it goes back to "not set up" (409 on `/records`) until `POST /devices/{id}/setup` gives it another bin. It keeps its key throughout.
 
+## Compost stage estimate
+
+`GET /bins/{id}/stage` estimates which of the five composting stages a bin is in, with the gradient-boosting classifier from [ml/](../ml/README.md). The API loads `ml/models/compost_stage_gb.joblib` once at startup with `ml/predict.py`'s `load_model()`, and runs `predict_readings()` on the bin's readings.
+
+**Swapping the model.** The model is two files, set in the environment (or `.env`), so it can be replaced without a code change. Paths are absolute or relative to `backendAPI/`, and are read at startup, so restart the API after changing one.
+
+| Variable | What it points to | Unset |
+|---|---|---|
+| `STAGE_MODEL_PATH` | the bundle `ml/train.py` writes (`format: compost-stage-gb/1`): the fitted classifier, its `features`, `stage_names` and stage-filter `transitions` | `ML_DIR/models/compost_stage_gb.joblib` |
+| `STAGE_MODEL_PARAMS` | JSON with any of `features`, `stage_names` and `transitions`, replacing the bundle's | the bundle's own |
+| `ML_DIR` | the code that runs the model: `predict.py` and `features.py` | the repo's `ml/` |
+
+`uv run python stage_model.py` (from `backendAPI/`) shows which model these settings load, and `--export-params FILE` writes its parameters as a file to edit. Typically you'd edit `transitions` (each row: the hourly chances of staying in a stage or moving on, adding up to 1) to make the stage filter quicker or slower, or rename `stage_names`. The dashboard shows whatever stages the model has. `features` must stay the columns the classifier was fitted on, in order, so a new feature set needs a new bundle.
+
+**Startup checks.** The API won't start, and says which setting is wrong, when a model or parameters file it was asked for is missing, can't be read, isn't a model bundle, was saved with another scikit-learn minor version, or doesn't fit together (features not the fitted ones, a stage-name count that doesn't match the classes, transitions that aren't a square matrix of rows adding up to 1, unknown keys in the parameters file). The model also has to get through a two-day test batch. The one exception is the default setup, with no variables set and no model file in `ML_DIR/models`: then the model isn't installed, the API starts without it, and this endpoint answers 503.
+
+- **Input.** The bin's last `days` (1–365, default 60) of `records`, every sensor in the bin averaged onto a 30-minute grid in SQL (the grid `ml/features.py` uses), as `timestamp`, `temperature_c` and `moisture_pct`. The records table has no ambient probe or MQ-135, so the model assumes 28 °C ambient. The gas columns are not used: the model was trained without them.
+- **Output.** `{stage_id, stage, raw_stage, confidence, probabilities, last_reading_at, history_hours}`. `stage` is predict.py's `stage_filtered`: the latest hour after its forward-only stage filter, which is what to show. `raw_stage` is the latest hour on its own, `confidence` that stage's probability, and `probabilities` every stage's probability for that hour. `last_reading_at` is the newest reading used.
+- **Not enough history.** The model's features look back 24 hours, so with under a day of readings the stage fields are `null` (and `probabilities` is empty), with `history_hours` saying how much there is.
+- **One batch.** The model remembers how hot the pile has been since it started, so more history is better, but readings from a previous batch mislead it. Nothing records when fresh feedstock goes in yet, so the window is the only control.
+- **No model.** Not installed (above): 503. The current model was saved with scikit-learn 1.9, which `pyproject.toml` pins (`>=1.9,<1.10`).
+- **The emulator.** By default it runs the pile 60 times faster than the clock it stamps readings with (`TIME_SCALE`), so a whole batch fits in about 8 hours. The model reads timestamps as real time, so for an emulator bin run it with `TIME_SCALE=1` and use **Start a batch in the past** on its page, which sends a fresh batch's history at real-time spacing ([emulator README](../emulator/README.md#stage-estimates-in-the-cloud)).
+
 ## Research data API
 
 A researcher selects the **researcher** account type at registration, then creates a key on the dashboard's **API keys** page. Send that key as `x-research-key` to `GET /research/overview` or `GET /research/daily`. Owner tokens and device keys cannot call these endpoints. The signed-in dashboard's **Explore data** page uses the equivalent `/research/preview/overview` and `/research/preview/daily` routes with the researcher's Bearer token.
@@ -158,4 +186,4 @@ curl -H "x-research-key: $RESEARCH_API_KEY" \
 cd backendAPI && uv run pytest
 ```
 
-These are integration tests against the Compose database; if it is not running they are skipped with a hint. The auth tests register their own users (`pytest-…@example.com`) and remove everything they create. The pairing tests (`tests/test_pairing.py`) cover every step above, including expired, reused and guessed codes, another user's device or bin, re-pairing and unpairing, and remove their devices (`02:00:00:00:FD:…`) afterwards. The registration tests (`tests/test_registration.py`) cover registering, the key working at once, another user's bin, unpairing, setting a device up again after its bin is deleted, replacing a key, and the paired-device rules above (409 with nothing revoked, `registration` can't be changed through the API, the database checks reject a mismatched row), and remove the devices they register. The account-type tests (`tests/test_roles.py`) send a researcher's token to every endpoint under the owner-only prefixes, read from the app's OpenAPI schema so new endpoints are covered too, and check that owners still get through and `/auth` still works for a researcher.
+These are integration tests against the Compose database; if it is not running they are skipped with a hint. The auth tests register their own users (`pytest-…@example.com`) and remove everything they create. The pairing tests (`tests/test_pairing.py`) cover every step above, including expired, reused and guessed codes, another user's device or bin, re-pairing and unpairing, and remove their devices (`02:00:00:00:FD:…`) afterwards. The registration tests (`tests/test_registration.py`) cover registering, the key working at once, another user's bin, unpairing, setting a device up again after its bin is deleted, replacing a key, and the paired-device rules above (409 with nothing revoked, `registration` can't be changed through the API, the database checks reject a mismatched row), and remove the devices they register. The account-type tests (`tests/test_roles.py`) send a researcher's token to every endpoint under the owner-only prefixes, read from the app's OpenAPI schema so new endpoints are covered too, and check that owners still get through and `/auth` still works for a researcher. The stage tests (`tests/test_stage.py`) send hand-drawn piles (warming up, hot, cooled down) and check the estimate is in the right part of the cycle, the under-a-day and no-readings answers, the window, the owner checks, and the 503 without a model; the ones that need the model are skipped with a hint if the API couldn't load it. The model-loading tests (`tests/test_stage_model.py`) cover the defaults, `STAGE_MODEL_PATH` and `STAGE_MODEL_PARAMS` overrides (custom stage names reach the endpoint), each kind of bad file, the not-installed case, and that the API refuses to start with a bad path.

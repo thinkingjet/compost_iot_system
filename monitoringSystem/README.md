@@ -40,7 +40,7 @@ Every account is one of two types (`users.role`, chosen at sign-up), and each ty
 | `/` | public | no page of its own: redirects to the user's home page (`/dashboard` for an owner, `/research` for a researcher) when signed in, otherwise to the public website (`WEBSITE_URL`, [website/](../website/README.md)) |
 | `/login`, `/register` | public | a signed-in user is sent on to their home page |
 | `/dashboard` | owner | overview |
-| `/bins`, `/bins/new`, `/bin/<id>/<tab>` | owner | list bins; create one with a name, location and country; view readings and devices; edit its details in settings |
+| `/bins`, `/bins/new`, `/bin/<id>/<tab>` | owner | list bins; create one with a name, location and country; view readings and devices; edit its details in settings. The live tab opens with the compost stage the API's model estimates (`GET /bins/{id}/stage`), labelled *Model estimate*, with its confidence |
 | `/devices` | owner | the user's devices from the API; unfinished ones are marked *Needs setup*, the rest link to their device page |
 | `/devices/add` | owner | the pairing wizard: get a code → the device redeems it → confirm its hardware ID → name and bin → wait for the first reading. `?device=<id>` resumes setup for a device paired earlier |
 | `/devices/register` | owner | registering without pairing: name and bin → the device's API key, shown once with the endpoint and an example → wait for the first reading. `?device=<id>` gives a registered device a new bin after its bin was deleted |

@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import AfterValidator, BaseModel, BeforeValidator, Field
 from sqlalchemy import text
 
+import stage_model
 from database import db_engine
 from routers.auth import current_user, owner_only
 
@@ -63,6 +64,19 @@ class DailyReading(BaseModel):
     avg_o2: float
     avg_co2: float
     avg_nh3: float
+
+
+class StageEstimate(BaseModel):
+    # the stage after predict.py's forward-only filter (its stage_id_filtered / stage_filtered)
+    stage_id: int | None
+    stage: str | None
+    # the latest hour on its own: its most likely stage, that stage's
+    # probability, and every stage's probability
+    raw_stage: str | None
+    confidence: float | None
+    probabilities: dict[str, float]
+    last_reading_at: datetime.datetime | None
+    history_hours: float
 
 
 BIN_COLUMNS = "id, name, location, country_code"
@@ -211,3 +225,47 @@ def get_bin_history(bin_id: uuid.UUID, days: Annotated[int, Query(ge=1, le=365)]
         ).all()
     return [DailyReading(**row._mapping) for row in results]
 
+
+@router.get("/{bin_id}/stage", response_model=StageEstimate)
+def get_bin_stage(bin_id: uuid.UUID, days: Annotated[int, Query(ge=1, le=365)] = 60, user = Depends(current_user)):
+    """The compost stage the model estimates from the bin's last `days` of readings.
+
+    The readings are treated as one batch: the model remembers the hottest the
+    pile has been, so more history is better, but a window that reaches back
+    into a previous batch misleads it. Under 24 h of readings gives no stage.
+    """
+    with db_engine.connect() as db:
+        if owned_bin(db, bin_id, user.id) is None:
+            raise HTTPException(status_code=404, detail="The bin with the given ID does not exist.")
+        if stage_model.bundle is None:
+            raise HTTPException(status_code=503, detail="The stage model isn't available on this server.")
+        since = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
+        # features.py averages readings onto a 30-minute grid first, so do that
+        # here: a device sending every 30 s would otherwise mean 170,000 rows
+        slots = db.execute(
+            text(
+                """
+                SELECT date_bin('30 minutes', timestamp, TIMESTAMPTZ '2000-01-01') AS slot,
+                    avg(temperature) AS temperature,
+                    avg(moisture_percent) AS moisture_percent,
+                    min(timestamp) AS first_at,
+                    max(timestamp) AS last_at
+                FROM records
+                WHERE bin_id = :bin_id AND timestamp >= :since
+                GROUP BY slot
+                ORDER BY slot
+                """
+            ),
+            {"bin_id": bin_id, "since": since}
+        ).all()
+
+    if not slots:
+        return StageEstimate(stage_id=None, stage=None, raw_stage=None, confidence=None, probabilities={},
+                             last_reading_at=None, history_hours=0)
+    last_reading_at = slots[-1].last_at
+    history_hours = (last_reading_at - slots[0].first_at).total_seconds() / 3600
+    if history_hours < stage_model.MIN_HISTORY_HOURS:
+        return StageEstimate(stage_id=None, stage=None, raw_stage=None, confidence=None, probabilities={},
+                             last_reading_at=last_reading_at, history_hours=history_hours)
+    estimate = stage_model.estimate([(row.slot, row.temperature, row.moisture_percent) for row in slots])
+    return StageEstimate(**estimate, last_reading_at=last_reading_at, history_hours=history_hours)

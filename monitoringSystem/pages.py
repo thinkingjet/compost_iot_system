@@ -297,6 +297,84 @@ def live_panel(kind, readings, device_names):
     return dmc.Box([readings_strip(readings), dmc.Card([toolbar, chart, gas_chart], padding="md")])
 
 
+def _hours_text(hours):
+    # rounded down below two days, so 23.6 h doesn't read as the full day the model needs
+    if hours < 1:
+        return "under an hour"
+    if hours < 48:
+        return "1 hour" if hours < 2 else f"{int(hours)} hours"
+    return f"{round(hours / 24)} days"
+
+
+def _percent(probability):
+    # an estimate is never certain, so 0.9997 reads ">99%", not "100%"
+    return ">99%" if probability >= 0.995 else f"{probability:.0%}"
+
+
+def stage_card(stage):
+    """The compost stage the model estimates (GET /bins/{id}/stage), labelled as
+    an estimate. stage is None when the API couldn't give one."""
+    header = dmc.Group(
+        [
+            dmc.Text("Compost stage", size="xs", fw=700, tt="uppercase", c="dimmed"),
+            dmc.Badge("Model estimate", variant="light", color="gray"),
+        ],
+        justify="space-between",
+    )
+    if stage is None:
+        return dmc.Card([header, dmc.Text("The stage estimate isn't available right now.", size="sm", c="dimmed", mt="xs")], padding="md")
+    if stage["stage"] is None:
+        has = f"it has {_hours_text(stage['history_hours'])}" if stage["last_reading_at"] else "it has none yet"
+        return dmc.Card(
+            [
+                header,
+                dmc.Title("Not enough readings yet", order=3, mt=4),
+                dmc.Text(f"The model needs a day of readings to estimate the stage ({has}).", size="sm", c="dimmed"),
+            ],
+            padding="md",
+        )
+
+    current = stage["stage_id"]
+    # the API lists a probability for every stage, in order, so a swapped model
+    # with other stages shows its own
+    stages = list(stage["probabilities"])
+    if stage["raw_stage"] == stage["stage"]:
+        confidence = f"{_percent(stage['confidence'])} confidence"
+    else:
+        # the filter only moves forward, so for a while it can disagree with the latest hour
+        confidence = f"the latest hour alone looks like {stage['raw_stage']} ({_percent(stage['confidence'])})"
+    steps = dmc.SimpleGrid(
+        [
+            dmc.Stack(
+                [
+                    dmc.Progress(value=100 if i <= current else 0, size="sm"),
+                    # no c=None for the current stage: Mantine can't parse a null colour and drops the text
+                    dmc.Text(name, size="xs", visibleFrom="sm", **({"fw": 700} if i == current else {"c": "dimmed"})),
+                ],
+                gap=4,
+            )
+            for i, name in enumerate(stages)
+        ],
+        cols=len(stages),
+        spacing="xs",
+        mt="sm",
+    )
+    note = (
+        f"Estimated by a machine-learning model from {_hours_text(stage['history_hours'])} of core temperature and "
+        f"moisture readings, up to {time_ago(stage['last_reading_at'])}. It can be wrong, so check the pile too."
+    )
+    return dmc.Card(
+        [
+            header,
+            dmc.Title(stage["stage"], order=3, mt=4),
+            dmc.Text(f"Stage {current + 1} of {len(stages)} · {confidence}", size="sm", c="dimmed"),
+            steps,
+            dmc.Text(note, size="xs", c="dimmed", mt="sm"),
+        ],
+        padding="md",
+    )
+
+
 def maintenance_panel(alerts):
     """Steps to fix each of the bin's open alerts (GET /alerts?bin_id=...), one card each."""
     if not alerts:
@@ -560,6 +638,15 @@ def bin_detail_page(bin_id, tab):
     except ApiUnavailable:
         return dmc.Alert("Can't load this bin right now.", color="red")
 
+    stage = None
+    if tab == "live":
+        try:
+            stage = api_client.get_bin_stage(bin_id)
+        except (NotAuthenticated, ApiError, ApiUnavailable):
+            # the card says the estimate is unavailable (a 503 when the API has no
+            # model) and the rest of the page still works
+            pass
+
     if tab == "history":
         panel = history_panel(history)
     elif tab == "settings":
@@ -570,7 +657,7 @@ def bin_detail_page(bin_id, tab):
         # the API lists all the user's devices; keep the ones in this bin
         panel = bin_devices_panel(bin_data, [d for d in all_devices if d["bin"] and d["bin"]["id"] == bin_id])
     else:
-        panel = live_panel("bin", readings, {d["id"]: d["name"] for d in all_devices})
+        panel = dmc.Stack([stage_card(stage), live_panel("bin", readings, {d["id"]: d["name"] for d in all_devices})], gap="md")
         if alerts:
             panel = dmc.Stack([dmc.Box([section_header("Needs attention"), alerts_grid(alerts)]), panel], gap="lg")
 

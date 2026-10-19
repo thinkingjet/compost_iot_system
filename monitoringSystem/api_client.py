@@ -174,6 +174,12 @@ def get_bin_history(bin_id, days=30):
     return _request("GET", f"/bins/{bin_id}/history?days={days}")
 
 
+def get_bin_stage(bin_id):
+    """The model's estimate of the bin's compost stage; stage is None with
+    under a day of readings. A 503 (ApiUnavailable) means the API has no model."""
+    return _request("GET", f"/bins/{bin_id}/stage")
+
+
 def update_device(device_id, name=None, bin_id=None):
     body = {"name": name, "bin_id": bin_id}
     return _request("PATCH", f"/devices/{device_id}", json={key: value for key, value in body.items() if value is not None})
