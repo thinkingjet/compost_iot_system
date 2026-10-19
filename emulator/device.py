@@ -11,6 +11,11 @@ Two background loops run for as long as the device is powered on:
             down it backs off and keeps the readings (up to QUEUE_MAX, oldest
             dropped first) until it comes back.
 
+Because the pile runs TIME_SCALE times faster than the clock its readings are
+stamped with, the cloud's stage model (which reads timestamps as real time)
+can't follow it. start_batch_in_past() gives the cloud something it can follow:
+a fresh batch started N days ago, its history sent at real-time spacing.
+
 Pairing gives the device its key, but the cloud only takes its readings once
 the user has confirmed the registration in the dashboard and given the device
 a name and a bin. Until then /records answers 409, and the device waits in
@@ -26,7 +31,7 @@ import re
 import threading
 import time
 from collections import deque
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from cloud import CloudClient, CloudError, CloudUnreachable
 from model import ACTIONS, CompostModel
@@ -39,6 +44,10 @@ EVENT_LOG_LENGTH = 20
 BACKOFF_FIRST_SECONDS = 5
 BACKOFF_MAX_SECONDS = 300
 CODE_PATTERN = re.compile(r"^\d{6}$")
+# a batch started in the past: one reading per half hour of its history (the
+# simulator's sample rate), and looked after: watered when it gets this dry
+BACKFILL_STEP_MINUTES = 30
+BACKFILL_WATER_BELOW_PCT = 50.0
 AWAITING_SETUP = ("Paired. Finish setting up this device in the dashboard (confirm the "
                   "registration, then give it a name and a bin) and readings will start.")
 
@@ -60,6 +69,14 @@ PAIRING_ERRORS = {
 
 
 class PairingError(Exception):
+    def __init__(self, message, status=400):
+        super().__init__(message)
+        self.message = message
+        self.status = status
+
+
+class BackfillError(Exception):
+    """Why a batch can't be started in the past, with the HTTP status for the page."""
     def __init__(self, message, status=400):
         super().__init__(message)
         self.message = message
@@ -244,8 +261,8 @@ class Device:
                 self._take_reading()
             self.wake_uploader.set()
 
-    def _take_reading(self):
-        reading = {"timestamp": utc_now(), **self.model.read()}
+    def _take_reading(self, timestamp=None, save=True):
+        reading = {"timestamp": timestamp or utc_now(), **self.model.read()}
         self.latest = reading
         self.history.append(reading)
         # an unpaired device has nowhere to send readings, so it doesn't keep them
@@ -258,7 +275,59 @@ class Device:
                 self.queue.popleft()
                 if limit > 1:
                     self.uplink["dropped_total"] += 1
-        self._save()
+        if save:
+            self._save()
+
+    def max_backfill_days(self):
+        # the whole history has to fit in the upload queue
+        return int(self.settings.queue_max * BACKFILL_STEP_MINUTES / 1440)
+
+    def _backfill_blocker(self):
+        """Why a batch can't be started in the past right now, or None."""
+        if self._pairing_state() != "paired":
+            return "Pair the device first."
+        # before setup the queue keeps only the newest reading, so the history would be lost;
+        # after a restart, wait for the first upload to show the cloud still takes readings
+        if self.uplink["state"] == "awaiting_setup" or self.uplink["last_success_at"] is None:
+            return "Wait until the cloud is taking this device's readings (set it up in the dashboard first)."
+        return None
+
+    def start_batch_in_past(self, days):
+        """Replaces the pile with fresh feedstock added `days` ago and queues its history.
+
+        The new pile runs forward in BACKFILL_STEP_MINUTES steps, watered below
+        BACKFILL_WATER_BELOW_PCT, with a reading at every step stamped from
+        `days` ago up to now, so the cloud gets a batch at real-time spacing.
+        Live readings carry on from the pile it ends with.
+        """
+        limit = self.max_backfill_days()
+        if not 1 <= days <= limit:
+            raise BackfillError(f"Pick between 1 and {limit} days.")
+        with self.lock:
+            blocker = self._backfill_blocker()
+            if blocker:
+                raise BackfillError(blocker, 409)
+            # unsent readings of the old pile would land in the middle of the new batch's history
+            superseded = len(self.queue)
+            self.queue.clear()
+            self.uplink["dropped_total"] += superseded
+            self.history.clear()
+
+            self.model = CompostModel(self.rng, self.settings.ambient_temp_c)
+            steps = days * 1440 // BACKFILL_STEP_MINUTES
+            now = datetime.now(timezone.utc)
+            for i in range(steps + 1):
+                if i:
+                    self.model.step(BACKFILL_STEP_MINUTES / 1440)
+                    if self.model.moisture < BACKFILL_WATER_BELOW_PCT:
+                        self.model.add_water()
+                at = now - timedelta(minutes=(steps - i) * BACKFILL_STEP_MINUTES)
+                self._take_reading(at.isoformat(timespec="milliseconds"), save=False)
+            self._save()
+            note = f"; {superseded} unsent readings of the old pile dropped" if superseded else ""
+            self._log_event(f"started a batch {days} day{'s' if days != 1 else ''} ago: "
+                            f"{steps + 1} readings of its history queued{note}")
+        self.wake_uploader.set()
 
     # -------------------------------------------------------------- uplink ---
 
@@ -393,6 +462,11 @@ class Device:
                 "sampling": {
                     "reading_interval_seconds": self.settings.reading_interval_seconds,
                     "time_scale": self.settings.time_scale,
+                },
+                "backfill": {
+                    "max_days": self.max_backfill_days(),
+                    "step_minutes": BACKFILL_STEP_MINUTES,
+                    "blocked": self._backfill_blocker(),
                 },
                 "pile": self.model.summary(),
                 "latest": self.latest,

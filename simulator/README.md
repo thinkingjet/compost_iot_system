@@ -20,8 +20,8 @@ Dependencies are in `requirements.txt` (`dash`, `dash-mantine-components`,
 | File | Role |
 | --- | --- |
 | `app.py` | Dash app: layout wiring and callbacks. Calls the generator, never reimplements it. |
-| `generator.py` | The simulation itself. Unchanged in behaviour — it just takes two more optional arguments now. |
-| `composting_stages.py` | The five stages and their measured envelopes. Single source of truth for stage data. |
+| `generator.py` | The simulation itself. |
+| `composting_stages.py` | The five stages and their measured envelopes, plus the gas, drying and heating curves the generator and the emulator share. Single source of truth for stage data. |
 | `run_store.py` | Saves and loads generated cycles under `Data/`. |
 | `ui/theme.py` | Stage colours, per-sensor accents, Mantine theme, Plotly templates, inline icons. |
 | `ui/charts.py` | Plotly figure builders. |
@@ -76,7 +76,7 @@ readings around.
 
 ## Changes made to `generator.py`
 
-The simulation logic is untouched. Three additive changes support the UI:
+Three additive changes support the UI:
 
 1. Output now goes to `simulator/Data/` instead of `../mock-data/`.
 2. `generate_bin_data()` and `generate_stage_data()` accept `sample_interval_minutes` and
@@ -84,5 +84,17 @@ The simulation logic is untouched. Three additive changes support the UI:
    exactly as before.
 3. `NOISE_DEFAULTS` / `resolve_noise()` let a caller override one sensor's noise without
    knowing the constant names.
+
+Then, so the data is realistic enough to train stage classifiers on:
+
+4. The gases come from one curve of how hot the pile is above ambient
+   (`composting_stages.pile_gases`), not from the current stage's range, so they no longer
+   jump at a stage change. O₂ and CO₂ trade off one for one.
+5. Moisture starts at a random 50–65 % and dries at the same rate in every stage, instead of
+   starting at 62.5 % and being clamped to each stage's range.
+6. Active thermophilic and peak decomposition share one heating curve, and a reading only
+   counts as peak decomposition once the core has held 55 °C for 6 hours.
+7. `generate_bin_data(heat_factor=...)` scales the heat above ambient for the bin size: about
+   0.2 gives a small Takakura basket that peaks near 35 °C and never reaches peak decomposition.
 
 Running `python simulator/generator.py` from the command line still works the same way.
