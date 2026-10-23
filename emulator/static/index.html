@@ -71,7 +71,7 @@
       </div>
     </section>
 
-    <!-- set before pairing; the cloud's stage model reads timestamps as real
+    <!-- held from power-on, sent after setup; the cloud's stage model reads timestamps as real
          time, so it needs this history (README, Stage estimates in the cloud).
          Polling only fills the fields while they hold no unsaved change -->
     <section class="card span-2" aria-labelledby="start-title">
@@ -80,8 +80,8 @@
         <span class="pill" id="start-pill" data-tone="dim"></span>
       </div>
       <p class="dim small">Where this device's batch begins and how many days of its history to send. The
-        first time the cloud takes this device's readings, it runs the batch up to now, sends a reading for
-        every 30 minutes of it, and carries on live from there.</p>
+        device runs the batch up to now, holds a reading for every 30 minutes of it, and carries on live
+        from there. The first time the cloud takes this device's readings, everything held goes.</p>
       <form id="start-form" class="start-form" autocomplete="off">
         <label class="field" for="start-days">
           <span>History to send</span>

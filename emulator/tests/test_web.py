@@ -60,9 +60,8 @@ class WebTest(unittest.TestCase):
         self.assertEqual(self.call("/api/actions/explode", {})[0], 404)
 
     def test_starting_a_batch_in_the_past(self):
-        status, body = self.call("/api/batch", {"days_ago": 2})
-        self.assertEqual(status, 409)
-        self.assertIn("Pair the device first", json.loads(body)["error"])
+        status, body = self.call("/api/batch", {"days_ago": 2})  # unpaired: held for later
+        self.assertEqual((status, json.loads(body)["start"]["held"]), (200, 2 * 48 + 1))
 
         self.call("/api/pair", {"code": self.cloud.issue_code()})
         self.cloud.set_up_all()
@@ -95,8 +94,8 @@ class WebTest(unittest.TestCase):
         status, body = self.call("/api/batch", {})  # no history: works unpaired
         self.assertEqual((status, json.loads(body)["pile"]["stage_name"]), (200, "Cooling"))
 
-        self.call("/api/start", {"history_days": 2})
-        self.assertEqual(self.call("/api/batch", {})[0], 409)  # history needs the cloud
+        status, body = self.call("/api/start", {"history_days": 2})  # unpaired: held straight away
+        self.assertEqual((status, json.loads(body)["start"]["held"]), (200, 2 * 48 + 1))
 
     def test_posts_must_be_json_so_other_sites_cant_press_buttons(self):
         # a cross-site form or fetch without a preflight can only send these types

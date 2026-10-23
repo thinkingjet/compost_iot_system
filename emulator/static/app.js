@@ -221,9 +221,12 @@ function plural(n, word) {
 
 function startPill(s) {
   const st = s.start;
+  if (st.pending) {
+    const held = `${st.held} readings held`;
+    return s.pairing.state === "paired" ? [`${held}, waiting for setup`, "warn"] : [held, "ok"];
+  }
   if (!st.history_days) return ["No history", "dim"];
-  if (s.pairing.state !== "paired") return ["Sends after pairing", "dim"];
-  if (st.pending) return ["Waiting for setup", "warn"];
+  if (s.pairing.state !== "paired") return ["Held when paired", "dim"];
   return ["Sent", "ok"];
 }
 
@@ -245,11 +248,14 @@ function startSummary(s) {
 function startHint(s) {
   const st = s.start;
   if (!st.history_days) return "The pile moves at once, nothing is sent from before now.";
-  if (s.pairing.state !== "paired") {
-    return "Sent once this device is paired and set up in the dashboard. Best in a bin with no recent " +
-      "readings: the cloud treats a bin's recent readings as one batch.";
+  if (st.pending) {
+    return "The history and a reading every 30 minutes since are held, and sent by themselves once this " +
+      "device is paired and set up in the dashboard. Best in a bin with no recent readings: the cloud " +
+      "treats a bin's recent readings as one batch. Changing the starting point makes the batch again.";
   }
-  if (st.pending) return "Sent by itself the first time the cloud takes this device's readings.";
+  if (s.pairing.state !== "paired") {
+    return "Saving makes this batch now and holds its history until the device is paired and set up.";
+  }
   if (s.backfill.blocked) return s.backfill.blocked;
   const last = st.last_batch && st.last_batch.days ? ` (${plural(st.last_batch.readings, "reading")}, ${ago(st.last_batch.at)})` : "";
   return `Already sent for this pairing${last}. Start now replaces the pile with this batch and sends its history again.`;
@@ -404,14 +410,16 @@ $("start-form").addEventListener("submit", (event) => {
 
 $("start-now").addEventListener("click", (event) => {
   const days = Number($("start-days").value);
-  const question = days
-    ? `Replace the pile with a batch begun ${plural(days, "day")} ago and send its history to the cloud?`
-    : "Move the pile to this starting point now?";
+  // nothing sent for this pile yet: the batch is held, not sent
+  const hold = status.start.pending || status.pairing.state !== "paired";
+  const question = !days ? "Move the pile to this starting point now?"
+    : hold ? `Replace the pile with a batch begun ${plural(days, "day")} ago and hold its history until setup?`
+    : `Replace the pile with a batch begun ${plural(days, "day")} ago and send its history to the cloud?`;
   if (!confirm(question)) return;
   press(event.currentTarget, async () => {
     if (startEdited) await saveStart();
     render(await api("/api/batch", {}));
-    toast(days ? `Sending ${plural(days, "day")} of history` : "Pile moved");
+    toast(!days ? "Pile moved" : hold ? `Holding ${plural(days, "day")} of history` : `Sending ${plural(days, "day")} of history`);
   });
 });
 

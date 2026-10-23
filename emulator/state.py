@@ -2,8 +2,8 @@
 The device's flash storage: one small JSON file that survives restarts.
 
 It holds the device's hardware identity, its cloud credentials once it's
-paired, the state of the pile, and the starting point set on the device page
-(with whether this pairing's history still has to be sent). On a real ESP32 this would be NVS; here
+paired, the state of the pile, the starting point set on the device page, and
+the readings held until the cloud first takes them. On a real ESP32 this would be NVS and flash; here
 it's a file that is written atomically (temp file + rename), so a crash
 mid-write never leaves half a file behind, and readable only by its owner
 because it contains the API key.
@@ -43,8 +43,10 @@ class StateFile:
         # the batch's seed and any of history_days, stage and progress set on
         # the page (the settings give the rest)
         self.start = None
-        # paired, but the starting point's history hasn't been sent yet
+        # the batch's history (and the readings since) is held, not sent yet
         self.history_pending = False
+        # {"start", "begins", "readings"}: what's held, and the starting point it was made from
+        self.held = None
 
     def load(self):
         if not self.path.is_file():
@@ -59,6 +61,7 @@ class StateFile:
             # missing from files saved before there was a history to send: a
             # device paired then has sent what it has, so its pile is left alone
             self.history_pending = bool(saved.get("history_pending", False))
+            self.held = saved.get("held")
         except (OSError, ValueError, TypeError) as error:
             # a corrupt file is treated like a factory-fresh device, but the
             # old file is kept aside so nothing is silently lost
@@ -67,6 +70,7 @@ class StateFile:
             os.replace(self.path, broken)
             self.device_uid = self.credentials = self.model = self.start = None
             self.history_pending = False
+            self.held = None
             return False
         return True
 
@@ -78,6 +82,7 @@ class StateFile:
             "model": self.model,
             "start": self.start,
             "history_pending": self.history_pending,
+            "held": self.held,
         }
         tmp = self.path.with_suffix(".tmp")
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
