@@ -277,8 +277,6 @@ class DeviceTest(unittest.TestCase):
         self.assertIn("3 unsent readings of the old pile dropped", status["events"][0]["text"])
 
     def test_a_batch_in_the_past_waits_until_the_cloud_takes_readings(self):
-        with self.assertRaisesRegex(BackfillError, "Pair the device first"):
-            self.device.start_batch_in_past(2)
         self.pair(set_up=False)
         self.reading_and_upload()
         with self.assertRaises(BackfillError) as refused:
@@ -394,7 +392,7 @@ class DeviceTest(unittest.TestCase):
         status = self.device.status()
         self.assertEqual(status["cloud"]["queued"], 2 * 48 + 1)
         self.assertFalse(status["start"]["pending"])
-        self.assertIn("started a batch 2 days ago", status["events"][0]["text"])
+        self.assertIn("sending the 97 held", status["events"][0]["text"])
 
         self.send_everything()
         stamps = [datetime.fromisoformat(record["timestamp"]) for record in self.cloud.records]
@@ -444,6 +442,76 @@ class DeviceTest(unittest.TestCase):
         self.assertFalse(upgraded.status()["start"]["pending"])
         self.reading_and_upload(upgraded)
         self.assertEqual(len(self.cloud.records), 1)
+
+    # ------------------------------------- the history held from power-on ---
+
+    def fresh_device(self, **overrides):
+        return self.new_device(state_file=self.settings.state_file.with_name("fresh.json"), **overrides)
+
+    def test_a_new_device_holds_its_history_from_power_on(self):
+        before = datetime.now(timezone.utc)
+        device = self.fresh_device(backfill_days=2)
+        status = device.status()
+        self.assertTrue(status["start"]["pending"])
+        self.assertEqual((status["start"]["held"], status["cloud"]["queued"]), (2 * 48 + 1, 0))
+        self.assertAlmostEqual(status["pile"]["batch_day"], 2.0, places=2)
+        stamps = [datetime.fromisoformat(record["timestamp"]) for record in device.held]
+        self.assertEqual(stamps[-1] - stamps[0], timedelta(days=2))
+        self.assertLess(abs(stamps[-1] - before), timedelta(seconds=5))
+        self.assertIn("held until the cloud takes", status["events"][0]["text"])
+
+    def test_readings_after_the_history_are_held_at_its_spacing(self):
+        device = self.fresh_device(backfill_days=1)
+        last = datetime.fromisoformat(device.held[-1]["timestamp"])
+        with device.lock:
+            for minutes in (10, 31, 45, 62):
+                device._keep_reading({**device.latest, "timestamp": (last + timedelta(minutes=minutes)).isoformat()})
+        self.assertEqual(len(device.held), 49 + 2)  # 31 and 62 minutes on
+        self.assertEqual(device.status()["cloud"]["queued"], 0)
+
+    def test_the_held_history_and_what_came_after_go_once_set_up(self):
+        self.device = self.fresh_device(backfill_days=1)
+        last = datetime.fromisoformat(self.device.held[-1]["timestamp"])
+        with self.device.lock:
+            self.device._keep_reading({**self.device.latest, "timestamp": (last + timedelta(hours=1)).isoformat()})
+        self.pair()
+        self.device._upload_once()
+        self.assertEqual(self.device.status()["cloud"]["queued"], 50)
+        self.send_everything()
+        stamps = [datetime.fromisoformat(record["timestamp"]) for record in self.cloud.records]
+        self.assertEqual((len(stamps), stamps[-1] - stamps[0]), (50, timedelta(days=1, hours=1)))
+        self.assertEqual(self.device.status()["start"]["last_batch"]["readings"], 50)
+
+    def test_the_held_history_survives_a_restart(self):
+        device = self.fresh_device(backfill_days=1)
+        held, day = list(device.held), device.model.batch_day
+        restarted = self.fresh_device(backfill_days=1)
+        self.assertEqual(list(restarted.held), held)
+        self.assertAlmostEqual(restarted.model.batch_day, day, places=6)
+
+    def test_a_changed_setting_remakes_the_held_history_on_restart(self):
+        self.fresh_device(backfill_days=1)
+        restarted = self.fresh_device(backfill_days=3)
+        self.assertEqual(restarted.status()["start"]["held"], 3 * 48 + 1)
+
+    def test_changing_the_starting_point_before_pairing_remakes_the_held_history(self):
+        device = self.fresh_device(backfill_days=1)
+        device.set_start_point({"history_days": 2, "stage": 2, "progress": 40})
+        self.assertEqual(device.status()["start"]["held"], 2 * 48 + 1)
+        self.assertEqual(device.held_begins["stage_name"], "Peak Decomposition")
+        device.start_batch_in_past(3)  # unpaired: held, no cloud needed
+        self.assertEqual(device.status()["start"]["held"], 3 * 48 + 1)
+        device.set_start_point({"history_days": 0})
+        self.assertEqual((device.status()["start"]["held"], device.status()["start"]["pending"]), (0, False))
+
+    def test_a_factory_reset_keeps_what_is_held_for_the_next_pairing(self):
+        self.device = self.fresh_device(backfill_days=1)
+        self.pair(set_up=False)
+        self.device.factory_reset()
+        self.assertEqual(self.device.status()["start"]["held"], 49)
+        self.pair()
+        self.device._upload_once()
+        self.assertEqual(self.device.status()["cloud"]["queued"], 49)
 
     def test_a_refused_empty_batch_backs_off(self):
         self.device = self.new_device(backfill_days=1)

@@ -38,7 +38,7 @@ class Settings:
 
     # the starting point the device page opens with (it can change them):
     # the batch's stage and how far through it, in %, and how many days of
-    # its history to send when the cloud first takes this device's readings
+    # its history a new device holds until the cloud first takes its readings
     start_stage: int
     start_progress: int
     backfill_days: int

@@ -13,12 +13,13 @@ Two background loops run for as long as the device is powered on:
 
 The cloud's stage model reads timestamps as real time, so it needs history
 before it can say anything. The device page sets a starting point: a batch N
-days back, so far through one of its stages. The first time the cloud takes
-this device's readings after pairing, the device runs that batch up to now
-and sends its history, a reading every BACKFILL_STEP_MINUTES, then carries on
-live from where it ends; start_batch_in_past() does the same on demand. With
-TIME_SCALE above 1 the live pile then runs faster than its timestamps, which
-the stage model can't follow for long.
+days back, so far through one of its stages. A new device runs that batch up
+to the moment it powers on and holds its history, a reading every
+BACKFILL_STEP_MINUTES, plus one every BACKFILL_STEP_MINUTES after it, carrying
+on live from where it ends. The first time the cloud takes this device's
+readings after pairing, everything held goes; start_batch_in_past() makes a
+batch on demand. With TIME_SCALE above 1 the live pile runs faster than its
+timestamps, which the stage model can't follow for long.
 
 Pairing gives the device its key, but the cloud only takes its readings once
 the user has confirmed the registration in the dashboard and given the device
@@ -154,9 +155,6 @@ class Device:
         self.store.load()
         self.store.device_uid = settings.device_uid or self.store.device_uid or fake_mac()
         self.start_point = self._restore_start()
-        self.model = self._restore_model()
-        self.store.model = self.model.to_dict()
-        self.store.save()
         # where the starting point's batch begins, and where it is by now
         self.start_preview = self._preview(self.start_point)
         # the last batch sent this run: {"at", "days", "readings", "begins"}
@@ -170,6 +168,12 @@ class Device:
         # sent even if the queue overflowed while the request was in flight
         self.queue = deque()
         self.seq = 0
+        # API records of the batch's history and the readings after it, held
+        # while store.history_pending until the cloud first takes this device's
+        # readings; held_from is the starting point they were made from
+        self.held = deque()
+        self.held_from = None
+        self.held_begins = None
         # bumped whenever the credentials change, so an upload that was in
         # flight during an unpair can't act on the old key's result
         self.generation = 0
@@ -186,14 +190,31 @@ class Device:
             "dropped_total": 0,
         }
         self._log_event("power on")
+        self._restore_pile()
 
-    def _restore_model(self):
+    def _restore_pile(self):
+        """The saved pile and anything it holds; a new device gets the starting point's batch, run up to now."""
+        model = None
         if self.store.model:
             try:
-                return CompostModel.from_dict(self.store.model, self.rng, self.settings.ambient_temp_c)
+                model = CompostModel.from_dict(self.store.model, self.rng, self.settings.ambient_temp_c)
             except (KeyError, TypeError, ValueError) as error:
                 log.warning("saved pile state is unusable (%s); starting a new batch", error)
-        return pile_at(self.rng, self.settings.ambient_temp_c, self.start_point["stage"], self.start_point["progress"])
+        held = self.store.held if isinstance(self.store.held, dict) else {}
+        if model is None:
+            self._hold_batch(self.start_point)
+        elif (self.store.history_pending and held.get("start") == self.start_point
+              and isinstance(held.get("readings"), list)):
+            self.model = model
+            self.held.extend(held["readings"])
+            self.held_from, self.held_begins = held["start"], held.get("begins")
+        elif self.store.history_pending:
+            # a setting changed the starting point since its history was made, or
+            # the file is from before the history was held: make it again
+            self._hold_batch(self.start_point)
+        else:
+            self.model = model
+            self._save()
 
     def _restore_start(self):
         """The starting point: what was set on the page, the settings for the rest.
@@ -241,6 +262,8 @@ class Device:
 
     def _save(self):
         self.store.model = self.model.to_dict()
+        self.store.held = ({"start": self.held_from, "begins": self.held_begins, "readings": list(self.held)}
+                           if self.store.history_pending else None)
         try:
             self.store.save()
         except OSError as error:
@@ -294,17 +317,18 @@ class Device:
             self.queue.clear()
             self.failures = 0
             self.retry_at = 0.0
-            # sent the first time the cloud takes this pairing's readings
-            self.store.history_pending = True
             self._set_uplink("awaiting_setup", AWAITING_SETUP)
-            self._save()
             self._log_event(f"paired as device {device_id or '(id not given)'}; "
                             "waiting for setup in the dashboard")
+            # a batch's history goes once per pairing: the one held already, or one made now
+            if not self.store.history_pending and self.start_point["history_days"]:
+                self._hold_batch(self.start_point)
+            self._save()
         self.wake_uploader.set()
 
     def _forget_credentials(self, reason):
+        # anything held belongs to the pile, so it waits for the next pairing
         self.store.credentials = None
-        self.store.history_pending = False
         self.generation += 1
         self.queue.clear()
         self.failures = 0
@@ -348,9 +372,10 @@ class Device:
     def _keep_reading(self, reading):
         self.latest = reading
         self.history.append(reading)
-        # an unpaired device has nowhere to send readings, so it doesn't keep them,
-        # and until its history has gone the history replaces them anyway
-        if self._pairing_state() == "paired" and not self._history_due():
+        if self.store.history_pending:
+            self._hold_reading(reading)
+        # an unpaired device has nowhere to send readings, so it doesn't keep them
+        elif self._pairing_state() == "paired":
             self.seq += 1
             self.queue.append((self.seq, to_api_record(reading)))
             # not set up yet: only the newest reading is worth sending later
@@ -360,14 +385,28 @@ class Device:
                 if limit > 1:
                     self.uplink["dropped_total"] += 1
 
+    def _hold_reading(self, reading):
+        # at the history's spacing, so a device waiting days to be paired still
+        # holds the start of its batch
+        if self.held:
+            since = (datetime.fromisoformat(reading["timestamp"])
+                     - datetime.fromisoformat(self.held[-1]["timestamp"]))
+            if since < timedelta(minutes=BACKFILL_STEP_MINUTES):
+                return
+        self.held.append(to_api_record(reading))
+        while len(self.held) > self.settings.queue_max:
+            self.held.popleft()
+            self.uplink["dropped_total"] += 1
+
     def max_backfill_days(self):
         # the whole history has to fit in the upload queue
         return int(self.settings.queue_max * BACKFILL_STEP_MINUTES / 1440)
 
     def _backfill_blocker(self):
         """Why a batch can't be started in the past right now, or None."""
-        if self._pairing_state() != "paired":
-            return "Pair the device first."
+        if self._history_open():
+            # nothing has gone yet, so the batch is just made again and held
+            return None
         # before setup the queue keeps only the newest reading, so the history would be lost;
         # after a restart, wait for the first upload to show the cloud still takes readings
         if self.uplink["state"] == "awaiting_setup" or self.uplink["last_success_at"] is None:
@@ -402,8 +441,10 @@ class Device:
             self.start_point = {**self._checked_start({**self.start_point, **changes}), "seed": self.start_point["seed"]}
             self.store.start = {**self.store.start, **{name: self.start_point[name] for name in changes if name in self.start_point}}
             self.start_preview = self._preview(self.start_point)
-            self._save()
             self._log_event(f"starting point set: {_describe(self.start_point)}")
+            if self._history_open():
+                self._hold_batch(self.start_point)
+            self._save()
 
     def _simulate_batch(self, start, now):
         """The starting point's batch: where it begins, the pile it ends as, and
@@ -430,9 +471,51 @@ class Device:
         return {"begins": begins, "now": _where(model)}
 
     def _history_due(self):
-        """Paired, and the starting point's history still has to go."""
-        return (self.store.history_pending and self.start_point["history_days"] > 0
-                and self._pairing_state() == "paired")
+        """Paired, and the held history still has to go."""
+        return self.store.history_pending and self._pairing_state() == "paired"
+
+    def _history_open(self):
+        """Nothing sent for this pile yet: unpaired, or paired with its history still held."""
+        return self.store.history_pending or self._pairing_state() != "paired"
+
+    def _hold_batch(self, start):
+        """Replace the pile with the starting point's batch, run up to now, and
+        hold its history for the first time the cloud takes this device's readings.
+
+        With no history the pile just moves to the starting point.
+        """
+        days = start["history_days"]
+        self.held.clear()
+        self.history.clear()
+        self.store.history_pending = bool(days)
+        begins, self.model, readings = self._simulate_batch(start, datetime.now(timezone.utc))
+        self.held_from, self.held_begins = dict(start), begins
+        for reading in readings:
+            self._keep_reading(reading)
+        self._save()
+
+        point = f"{begins['progress']} % through {begins['stage_name']}"
+        if not days:
+            self._log_event(f"pile moved to {point}")
+            return
+        fresh = begins["stage_id"] == 0 and begins["progress"] == 0
+        self._log_event(f"made a batch begun {days} day{'s' if days != 1 else ''} ago"
+                        f"{'' if fresh else ' at ' + point}: {len(readings)} readings of its history "
+                        "held until the cloud takes this device's readings")
+
+    def _send_held(self):
+        """Queue everything held: the batch's history and the readings since."""
+        sent = len(self.held)
+        for record in self.held:
+            self.seq += 1
+            self.queue.append((self.seq, record))
+        self.held.clear()
+        self.store.history_pending = False
+        days = self.held_from["history_days"] if self.held_from else 0
+        self.last_batch = {"at": utc_now(), "days": days, "readings": sent, "begins": self.held_begins}
+        self._set_uplink("ok", f"Sending {days} day{'s' if days != 1 else ''} of history and the "
+                               f"readings since ({sent} readings).")
+        self._log_event(f"the cloud is taking readings: sending the {sent} held since the batch began")
 
     def _run_batch(self, start):
         """Replace the pile with the starting point's batch and queue its history, ending now."""
@@ -468,6 +551,8 @@ class Device:
         `days` ago up to now, so the cloud gets a batch at real-time spacing.
         Live readings carry on from the pile it ends with. With no history
         (0 days) the pile just moves to the starting point, which needs no cloud.
+        Before anything has gone (see _history_open) the batch is held instead,
+        so this needs no cloud either.
         """
         with self.lock:
             start = dict(self.start_point)
@@ -476,6 +561,9 @@ class Device:
                 if not 1 <= days <= limit:
                     raise BackfillError(f"Pick between 1 and {limit} days.")
                 start["history_days"] = days
+            if self._history_open():
+                self._hold_batch(start)
+                return
             if start["history_days"]:
                 blocker = self._backfill_blocker()
                 if blocker:
@@ -557,14 +645,8 @@ class Device:
             self._set_uplink("ok", f"Sent {len(batch)} reading{'s' if len(batch) != 1 else ''}." if batch
                              else "The cloud is taking this device's readings.")
             if self.store.history_pending:
-                # the first time the cloud takes this pairing's readings: the history's moment.
-                # After the state above, so the whole history is queued, not just the newest
-                self.store.history_pending = False
-                days = self.start_point["history_days"]
-                if days:
-                    self._run_batch(self.start_point)
-                    self._set_uplink("ok", f"Sending {days} day{'s' if days != 1 else ''} of history "
-                                           f"({len(self.queue)} readings).")
+                # the first time the cloud takes this pairing's readings: the history's moment
+                self._send_held()
                 self._save()
             more = bool(self.queue)
         if more:
@@ -646,6 +728,7 @@ class Device:
                     "progress": self.start_point["progress"],
                     "max_progress": MAX_START_PROGRESS,
                     "pending": self.store.history_pending,
+                    "held": len(self.held),
                     "preview": self.start_preview,
                     "last_batch": self.last_batch,
                 },

@@ -61,7 +61,7 @@ with comments.
 | `TIME_SCALE` | `1` | How much faster compost time runs than real time. At 1 the pile keeps pace with its timestamps, which the cloud's stage estimate needs |
 | `START_STAGE` | `0` | The [starting point](#the-starting-point)'s stage (0 Early Mesophilic … 4 Maturation); a brand-new device's pile starts there too |
 | `START_STAGE_PROGRESS` | `0` | How far through that stage, in % (0–95) |
-| `BACKFILL_DAYS` | `5` | Days of the starting point's history sent the first time the cloud takes the device's readings; `0` sends none. At most `QUEUE_MAX` readings (20 days by default) |
+| `BACKFILL_DAYS` | `5` | Days of the starting point's history a new device holds from power-on and sends the first time the cloud takes its readings; `0` sends none. At most `QUEUE_MAX` readings (20 days by default), and the readings held after it count too |
 | `AMBIENT_TEMP_C` | `28` | Temperature the pile starts from and cools back to |
 | `SEED` | random | Fixed seed for repeatable readings |
 | `UPLOAD_BATCH_MAX` | `50` | Most readings sent in one request |
@@ -99,8 +99,9 @@ Common values for `CLOUD_API_URL`:
   through it is, marked *Emulator only* because a real device can't know this.
 - **Starting point.** How many days of history to send, the stage the batch
   begins in, and how far through it, with where that batch will be by now
-  ([below](#the-starting-point)). Set it before pairing; **Start now** runs it
-  again later. A note says when `TIME_SCALE` is above 1.
+  and how many readings are held for the cloud ([below](#the-starting-point)).
+  Changing it before the history has gone makes the batch again; **Start now**
+  runs it again later. A note says when `TIME_SCALE` is above 1.
 - **Pile controls.** Turn the pile, add water, add fresh feedstock.
 - **Cloud uplink.** Where readings go, when the last batch was sent, how many
   are waiting, and any error. Uploads can be paused, which is handy for
@@ -154,8 +155,9 @@ see the [API README](../backendAPI/README.md#compost-stage-estimate)). Its model
 reads the timestamps as real time: it needs a day of readings, looks back over
 24-hour windows, and counts how many hours the core has held 55 °C. So it needs
 history, at real-time spacing, from a pile that keeps pace with its timestamps.
-With the defaults the device gives it both: 5 days of history the first time
-the cloud takes its readings, then live readings at `TIME_SCALE=1`. At a
+With the defaults the device gives it both: 5 days of history, held from
+power-on and sent the first time the cloud takes its readings, then live
+readings at `TIME_SCALE=1`. At a
 `TIME_SCALE` above 1 the live pile runs ahead of its timestamps, and the device
 page says the estimate won't follow it for long.
 
@@ -175,24 +177,36 @@ Peak Decomposition instead; the card says so when that happens.
 
 From there it runs the batch up to now in 30-minute steps, watering it whenever
 moisture falls below 50 %, as someone looking after it would. Every step is a
-reading stamped at its own time, from that many days ago up to now, queued and
-uploaded in the usual batches. Live readings then carry on from the pile it ends
-with. The card shows where that will be (the batch is seeded once per device, so
-the preview is the batch that gets sent), and the sensors card shows the pile's
-actual stage (*Emulator only*) to compare with the dashboard's estimate.
+reading stamped at its own time, from that many days ago up to now. Live
+readings then carry on from the pile it ends with. The card shows where that
+will be (the batch is seeded once per device, so the preview is the batch that
+gets sent), and the sensors card shows the pile's actual stage (*Emulator only*)
+to compare with the dashboard's estimate.
+
+When it's made:
+
+- **At power-on, for a new device** (no saved pile). The history is held in the
+  state file, not sent, and so is one live reading every 30 minutes after it, so
+  the cloud later gets the batch from its first day up to the moment it takes
+  the readings, at even spacing. Held readings count against `QUEUE_MAX`; past
+  that the oldest go, so leave room for 48 a day while the device waits.
+- **When the starting point changes before anything has gone** (unpaired, or
+  paired and still holding): saving it on the page, **Start now**, or a changed
+  `START_STAGE`, `START_STAGE_PROGRESS` or `BACKFILL_DAYS` at the next restart.
+- **At pairing**, if nothing is held (its history went with an earlier pairing,
+  or the device dates from before this existed and kept its pile).
 
 When it's sent:
 
 - **By itself, once per pairing**: the first time the cloud takes this device's
   readings, which is when it has been set up in the dashboard. Until then the
-  device keeps no live readings (the history replaces them) and asks with an
-  empty batch, which the API answers with 409 before setup and 200 after,
-  storing nothing. So nothing lands in the bin ahead of the history. A restart
-  before setup still sends it; a device paired before this existed keeps its pile.
-- **Again, on demand**: **Start now** (`POST /api/batch {}`, or `{"days_ago": 5}`
-  for a different number of days) replaces the pile with the batch and sends its
-  history again. With 0 days of history it just moves the pile to the starting
-  point, no cloud needed.
+  device asks with an empty batch, which the API answers with 409 before setup
+  and 200 after, storing nothing. Then everything held is queued and uploaded in
+  the usual batches, so nothing lands in the bin ahead of the history.
+- **Again, on demand**: once it has gone, **Start now** (`POST /api/batch {}`,
+  or `{"days_ago": 5}` for a different number of days) replaces the pile with
+  the batch and sends its history straight away. With 0 days of history it just
+  moves the pile to the starting point, no cloud needed.
 
 Pick a bin with no recent readings. The cloud treats a bin's recent readings as
 one batch, so a bin that has had other readings in the last few weeks gives a
@@ -327,24 +341,25 @@ Checked end to end with the emulator in Docker, the real API and the dashboard:
 | `400` / `413` / `422` | Drops that batch, since resending it can never work, and records how many were dropped |
 | `5xx`, `429`, no answer | Keeps the readings and retries after 5 s, 10 s, 20 s … up to 5 minutes. **Retry now** skips the wait. |
 
-The device only queues readings while it's paired, and not while the starting
-point's history is still to go (it asks with an empty batch instead, see
-[above](#the-starting-point)). The queue lives in memory, so readings not yet
-sent, history included, are lost if the emulator restarts.
+The device only queues readings while it's paired, and not while it's holding
+the starting point's history (it holds them with it and asks with an empty
+batch instead, see [above](#the-starting-point)). The queue lives in memory, so
+queued readings not yet sent are lost if the emulator restarts; held ones are
+in the state file and aren't.
 
 ## Saved state and factory reset
 
 `device.json` holds the hardware ID (a random, locally administered MAC made on
 first start), the credentials once paired, the pile, what was set on the page's
-**Starting point** card (with the batch's seed), and whether this pairing's
-history has gone yet. It's written
+**Starting point** card (with the batch's seed), and the readings held for the
+cloud until its history goes. It's written
 atomically and is readable only by its owner, because it holds the API key.
 Stopping or rebuilding the container keeps it (it's on the `device-data`
 volume), so a paired device picks up where it left off.
 
 **Factory reset** clears the pairing and the key only. The hardware ID stays,
-and so do the compost and the starting point; pairing again sends the history
-again. To start completely fresh:
+and so do the compost, the starting point and anything held; pairing again
+sends what's held, or makes the batch again if its history has already gone. To start completely fresh:
 `docker compose down -v` (or delete `emulator/state/`).
 
 The credentials remember which cloud issued them. If `CLOUD_API_URL` changes,
@@ -381,10 +396,11 @@ cd emulator
 python -m unittest        # or: pytest
 ```
 
-The suite has 71 tests and runs in about 4 seconds. It covers the model, pairing,
+The suite has 78 tests and runs in about 4 seconds. It covers the model, pairing,
 the wait for setup, every uplink path against the fake cloud, the starting point
 (getting a pile part way through any stage, the preview matching what's sent, the
-history going once per pairing with nothing ahead of it), a batch started in the
+history held from power-on and going once per pairing with nothing ahead of it),
+a batch started in the
 past, and the web routes.
 
 To try the device without running the API and dashboard, run the fake cloud:
